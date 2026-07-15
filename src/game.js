@@ -639,6 +639,10 @@ export class EquestrianGame {
 
   openHomeMenu() {
     this.phase = "menu";
+    if (this.confetti) {
+      for (const c of this.confetti) this.scene.remove(c.mesh);
+      this.confetti = [];
+    }
     this.message = "在首頁選擇模式與難度後開始。";
     this.overlay.visible = false;
     this.pushHud();
@@ -747,6 +751,37 @@ export class EquestrianGame {
     }
   }
 
+  // 零罰分慶祝(07-15 使用者提議:天上掉彩花/花瓣/彩帶):
+  // 尊重 prefers-reduced-motion;彩紙+花瓣+彩帶三種形狀,7 秒自然落完
+  spawnConfetti() {
+    if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (!this.confetti) this.confetti = [];
+    const colors = [0xffd24a, 0xff6b81, 0x7de08c, 0x6ec6ff, 0xc890ff, 0xffa050, 0xf5f0e0];
+    const p = this.posAt(this.dist);
+    for (let i = 0; i < 160; i += 1) {
+      const kind = i % 3; // 0 彩紙方片 1 花瓣圓片 2 彩帶長條
+      const geo = kind === 0
+        ? new THREE.PlaneGeometry(0.16, 0.16)
+        : kind === 1
+          ? new THREE.CircleGeometry(0.1, 6)
+          : new THREE.PlaneGeometry(0.06, 0.5);
+      const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+        color: colors[i % colors.length], side: THREE.DoubleSide, transparent: true, opacity: 0.95,
+      }));
+      mesh.position.set(p.x + (Math.random() * 2 - 1) * 14, 8 + Math.random() * 7, p.z + (Math.random() * 2 - 1) * 14);
+      mesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+      this.scene.add(mesh);
+      this.confetti.push({
+        mesh,
+        vy: 1.2 + Math.random() * 1.6,
+        swayA: Math.random() * Math.PI * 2,
+        swayF: 1.5 + Math.random() * 2,
+        spin: (Math.random() * 2 - 1) * 3,
+        t: 0,
+      });
+    }
+  }
+
   finishCourse() {
     this.phase = "ended";
     const preset = DIFFICULTY_PRESETS[this.difficulty];
@@ -763,6 +798,7 @@ export class EquestrianGame {
         text: `騎行 ${timeText}+罰分 ${this.faults}(換算秒)。敢加速、又穩得住,才是決勝圈之王!`,
         canResume: false,
       };
+      if (this.faults === 0) this.spawnConfetti();
       this.emitEvent("finish", { faults: this.faults, elapsed: this.elapsed, clearRound: this.faults === 0 });
     } else {
       const clearRound = total === 0;
@@ -775,6 +811,7 @@ export class EquestrianGame {
           : `碰桿 ${this.faults}${timeFaults ? ` + 超時 ${timeFaults}` : ""} 罰分,用時 ${timeText}。再來一場,朝零罰分前進!`,
         canResume: false,
       };
+      if (clearRound) this.spawnConfetti();
       this.emitEvent("finish", { faults: total, elapsed: this.elapsed, clearRound });
     }
     this.message = `完賽——罰分 ${total},${timeText}。`;
@@ -877,6 +914,25 @@ export class EquestrianGame {
       k.fence.topRail.rotation.x = kt * 0.5;
     }
     this.knockAnims = this.knockAnims.filter((k) => k.t < 0.9);
+
+    // 彩花飄落(零罰分慶祝):左右搖曳+自旋,7 秒淡出回收
+    if (this.confetti && this.confetti.length) {
+      for (const c of this.confetti) {
+        c.t += delta;
+        c.mesh.position.y -= c.vy * delta;
+        c.mesh.position.x += Math.sin(c.swayA + c.t * c.swayF) * delta * 1.2;
+        c.mesh.rotation.x += c.spin * delta;
+        c.mesh.rotation.z += c.spin * 0.7 * delta;
+        if (c.t > 5.5) c.mesh.material.opacity = Math.max(0, 0.95 * (1 - (c.t - 5.5) / 1.5));
+      }
+      this.confetti = this.confetti.filter((c) => {
+        if (c.t >= 7 || c.mesh.position.y < -0.5) {
+          this.scene.remove(c.mesh);
+          return false;
+        }
+        return true;
+      });
+    }
 
     this.handleKeys();
     this.updateHorsePose();
