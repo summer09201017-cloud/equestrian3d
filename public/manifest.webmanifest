@@ -1,0 +1,24 @@
+{
+  "name": "3D 馬術障礙賽",
+  "short_name": "3D馬術",
+  "description": "可在手機與 PC 遊玩的 3D 馬術障礙賽——控速取節奏、綠區時機起跳,零罰分跳完全程!",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#09131d",
+  "theme_color": "#0d1f2b",
+  "orientation": "landscape",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

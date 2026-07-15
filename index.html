@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#0d1f2b" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <title>3D 馬術障礙賽 Equestrian 3D</title>
+  </head>
+  <body>
+    <div class="app-shell">
+      <canvas id="gameCanvas" aria-label="3D 馬術障礙賽遊戲畫面"></canvas>
+
+      <div class="top-bar">
+        <div class="score-card team-home">
+          <span class="score-label">罰分</span>
+          <strong id="faultsLabel">0</strong>
+        </div>
+        <div class="center-board">
+          <div class="clock-stack period-stack">
+            <span class="mini-label">模式</span>
+            <strong id="modeCode">標準</strong>
+          </div>
+          <div class="clock-stack">
+            <span class="mini-label">障礙</span>
+            <strong id="fenceLabel">1/8</strong>
+            <span class="stack-subtext" id="timeLabel">0:00.0</span>
+          </div>
+          <div class="clock-stack accent">
+            <span class="mini-label">上一欄</span>
+            <strong id="lastFenceLabel">—</strong>
+            <span class="stack-subtext" id="phaseLabel">主選單</span>
+          </div>
+        </div>
+        <div class="score-card team-away">
+          <span class="score-label">乾淨過欄</span>
+          <strong id="clearsLabel">0</strong>
+        </div>
+      </div>
+
+      <button id="pauseButton" class="pause-fab">暫停</button>
+
+      <div class="message-ribbon" id="statusMessage">選擇模式後開始比賽。</div>
+      <div class="commentary-bar" id="commentaryBar" hidden></div>
+
+      <aside class="side-panel">
+        <div class="panel-block hero-panel">
+          <p class="eyebrow">Equestrian 3D</p>
+          <h1>3D 馬術障礙賽</h1>
+          <p class="panel-copy">
+            按住「加速」控節奏,靠近欄架時抓準綠區按「起跳」——零罰分跳完全程就是 Clear Round!
+          </p>
+        </div>
+
+        <div class="panel-block compact-grid">
+          <div>
+            <span class="mini-label">遊戲模式</span>
+            <strong id="modeLabel">標準賽</strong>
+          </div>
+          <div>
+            <span class="mini-label">難度</span>
+            <strong id="difficultyLabel">標準</strong>
+          </div>
+          <div>
+            <span class="mini-label">容許時間</span>
+            <strong id="timeAllowedLabel">80 秒</strong>
+          </div>
+          <div>
+            <span class="mini-label">下一欄</span>
+            <strong id="nextFenceLabel">—</strong>
+          </div>
+          <div>
+            <span class="mini-label">馬速</span>
+            <strong id="speedLabel">0 km/h</strong>
+          </div>
+          <div>
+            <span class="mini-label">音效狀態</span>
+            <strong id="audioStatus">開啟</strong>
+          </div>
+          <div>
+            <span class="mini-label">最佳成績</span>
+            <strong id="saveStatus">尚無</strong>
+          </div>
+        </div>
+
+        <div class="panel-block meter-block">
+          <div class="meter-copy">
+            <span class="mini-label">馬速</span>
+            <strong id="speedMeterText">按住加速</strong>
+          </div>
+          <div class="meter-track">
+            <div id="speedMeterFill" class="meter-fill shot"></div>
+          </div>
+
+          <div class="meter-copy stamina-copy">
+            <span class="mini-label">起跳時機(滿=理想起跳點)</span>
+            <strong id="approachValue">—</strong>
+          </div>
+          <div class="meter-track stamina">
+            <div id="approachFill" class="meter-fill stamina-fill"></div>
+          </div>
+        </div>
+
+        <div class="panel-block action-buttons">
+          <button id="menuButton" class="primary">首頁選單</button>
+          <button id="loadButton">最佳成績</button>
+          <button id="audioButton">音效開啟</button>
+          <button id="cameraButton">視角切換</button>
+        </div>
+
+        <div class="panel-block">
+          <button id="installButton" class="install-button" hidden>安裝到手機</button>
+          <p class="install-hint" id="installHint">
+            Android 可直接安裝；iPhone 可用分享選單加入主畫面。
+          </p>
+        </div>
+
+        <div class="panel-block instructions">
+          <p class="mini-label">操作</p>
+          <p>出發 / 起跳: 點畫面或空白鍵</p>
+          <p>加速: 按住 W / ↑ / 加速鈕</p>
+          <p>收步: 按住 S / ↓</p>
+          <p>視角切換: V｜暫停: Esc / P</p>
+        </div>
+      </aside>
+
+      <div class="touch-layer" id="touchControls">
+        <div class="dpad">
+          <button data-action="up" aria-label="加速">▲ 加速</button>
+          <button data-action="down" aria-label="收步">▼ 收步</button>
+        </div>
+        <div class="action-pad">
+          <button data-action="shoot" class="shoot">起跳</button>
+          <button data-action="camera">視角</button>
+        </div>
+      </div>
+
+      <div class="overlay-shell" id="matchOverlay" aria-live="polite">
+        <div class="overlay-card">
+          <p class="eyebrow" id="overlayEyebrow">比賽暫停</p>
+          <h2 id="overlayTitle">暫停中</h2>
+          <p id="overlayText" class="overlay-copy">準備好再回到場上。</p>
+          <div class="button-row overlay-actions">
+            <button id="resumeButton" class="primary">繼續比賽</button>
+            <button id="overlayMenuButton">回到首頁</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="home-screen visible" id="homeScreen" aria-live="polite">
+        <div class="home-backdrop"></div>
+        <div class="home-content">
+          <div class="home-hero">
+            <p class="eyebrow">Equestrian 3D</p>
+            <h2>控節奏、抓綠區、飛過欄</h2>
+            <p>
+              馬兒會沿白沙路線自己跑——你只管兩件事:按住「加速」拿捏節奏,接近欄架時在綠區按「起跳」。碰桿 +4 罰分,零罰分=Clear Round!
+            </p>
+          </div>
+
+          <div class="home-grid">
+            <section class="home-card">
+              <p class="eyebrow">遊戲模式</p>
+              <div class="mode-card-grid" id="modeCardGrid">
+                <button class="mode-card" data-mode="standard">
+                  <strong>標準賽</strong>
+                  <span>跳完整條路線,罰分越少越好</span>
+                </button>
+                <button class="mode-card" data-mode="jumpoff">
+                  <strong>決勝圈</strong>
+                  <span>縮短路線拼速度,時間+罰分換算秒</span>
+                </button>
+                <button class="mode-card" data-mode="practice">
+                  <strong>練習場</strong>
+                  <span>無限圈數,自由練節奏與起跳</span>
+                </button>
+              </div>
+              <p id="modeDescription" class="mode-description"></p>
+            </section>
+
+            <section class="home-card">
+              <p class="eyebrow">比賽設定</p>
+              <label class="field-label" for="menuDifficultySelect">難度</label>
+              <select id="menuDifficultySelect">
+                <option value="kids">幼兒（超簡單）</option>
+                <option value="child">兒童（簡單）</option>
+                <option value="easy">入門</option>
+                <option value="normal">標準</option>
+                <option value="hard">職業</option>
+              </select>
+
+              <label class="field-label" for="horseCoatSelect">馬的毛色</label>
+              <select id="horseCoatSelect">
+                <option value="brown">棗棕</option>
+                <option value="white">白馬</option>
+                <option value="black">黑馬</option>
+                <option value="chestnut">紅棕（栗色）</option>
+                <option value="grey">銀灰</option>
+                <option value="palomino">金黃</option>
+                <option value="pinto">花斑（棕白）</option>
+              </select>
+
+              <label class="field-label" for="audioSelect">音效與播報</label>
+              <select id="audioSelect">
+                <option value="on">開啟</option>
+                <option value="off">靜音</option>
+              </select>
+
+              <div class="home-mode-meta">
+                <div>
+                  <span class="mini-label">模式摘要</span>
+                  <strong id="modeMetaTitle">標準賽</strong>
+                </div>
+                <div>
+                  <span class="mini-label">目標</span>
+                  <strong id="modeMetaGoal">罰分越少越好</strong>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <div class="button-row home-actions">
+            <button id="startMatchButton" class="primary">開始比賽</button>
+            <button id="continueSavedButton">看最佳成績</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+      <div class="power-panel-big" id="bigPower" hidden><span>起跳時機</span><div class="big-track"><div class="big-fill" id="bigPowerFill"></div></div></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
