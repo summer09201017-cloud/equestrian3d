@@ -742,3 +742,7 @@ button.active {
 /* [hidden] 修正:面板 display:flex 會蓋過 UA 的 [hidden]{display:none}(joash 同款) */
 .power-panel-big[hidden], .strike-panel[hidden] { display: none; }
 .big-fill.full { background: linear-gradient(90deg, #7de08c, #3ddc75); box-shadow: 0 0 16px rgba(125,224,140,.9); }
+
+/* 競速小地圖(07-15 使用者點名):路線+紅我藍他+欄架點 */
+.mini-map { position: absolute; left: 14px; top: 118px; width: 190px; height: 140px; display: block; background: rgba(8,14,26,.72); border: 1px solid rgba(255,255,255,.22); border-radius: 12px; z-index: 30; pointer-events: none; }
+.mini-map[hidden] { display: none; }

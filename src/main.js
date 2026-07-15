@@ -254,6 +254,46 @@ game.onHudUpdate = (state) => {
       bf.classList.toggle("full", state.inWindow);
     }
   }
+  // 競速小地圖:路線灰線+欄架白點+我(紅)+AI(藍)
+  {
+    const mm = document.getElementById("miniMap");
+    const showMap = state.modeLabel === "雙騎競速" && state.phaseLabel !== "主選單";
+    mm.hidden = !showMap;
+    if (showMap) {
+      const ctx = mm.getContext("2d");
+      const d = game.getMinimapData();
+      ctx.clearRect(0, 0, mm.width, mm.height);
+      const sx = (x) => ((x + 38) / 76) * mm.width;
+      const sy = (z) => ((z + 28) / 56) * mm.height;
+      ctx.strokeStyle = "rgba(255,255,255,.45)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      d.path.forEach(([x, z], i) => (i ? ctx.lineTo(sx(x), sy(z)) : ctx.moveTo(sx(x), sy(z))));
+      ctx.closePath();
+      ctx.stroke();
+      ctx.fillStyle = "rgba(255,255,255,.8)";
+      for (const [x, z] of d.fences) {
+        ctx.fillRect(sx(x) - 1.5, sy(z) - 1.5, 3, 3);
+      }
+      if (d.ai) {
+        ctx.fillStyle = "#4d9fff";
+        ctx.beginPath();
+        ctx.arc(sx(d.ai[0]), sy(d.ai[1]), 5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = "#ff5544";
+      ctx.beginPath();
+      ctx.arc(sx(d.me[0]), sy(d.me[1]), 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+      // 領先/落後字
+      ctx.fillStyle = "#ffe9ad";
+      ctx.font = "bold 12px system-ui";
+      ctx.fillText(state.timeAllowed, 8, 16);
+    }
+  }
   syncOverlay(state.overlay);
 };
 

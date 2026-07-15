@@ -1167,6 +1167,28 @@ export class EquestrianGame {
     this.camera.lookAt(this.camLook);
   }
 
+  // 小地圖資料(競速模式;path 取樣一次快取)
+  getMinimapData() {
+    if (!this._miniPath) {
+      this._miniPath = [];
+      for (let i = 0; i <= 100; i += 1) {
+        const p = this.posAt((this.courseLen * i) / 100);
+        this._miniPath.push([p.x, p.z]);
+      }
+    }
+    const me = this.posAt(this.dist);
+    const ai = this.mode.race && this.aiHorse && this.aiHorse.group.visible ? this.posAt(this.aiDist) : null;
+    return {
+      path: this._miniPath,
+      me: [me.x, me.z],
+      ai: ai ? [ai.x, ai.z] : null,
+      fences: (this.fences || []).map((f) => {
+        const p = this.posAt(f.dist % this.courseLen);
+        return [p.x, p.z];
+      }),
+    };
+  }
+
   // ---------- HUD ----------
   pushHud() {
     if (!this.onHudUpdate) return;
