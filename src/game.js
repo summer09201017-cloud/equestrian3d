@@ -41,6 +41,12 @@ export const GAME_MODES = {
     description: "縮短路線拼速度:成績=時間+罰分換算秒數,敢加速才會贏。",
     goal: "總秒數越少越好",
   },
+  race: {
+    label: "雙騎競速",
+    race: true,
+    description: "跟 AI 藍騎士一人一馬同場飆——碰桿會踉蹌減速,先衝過終點的贏!",
+    goal: "先到終點者勝",
+  },
   practice: {
     label: "練習場",
     endless: true,
@@ -68,6 +74,15 @@ export const HORSE_COATS = {
 const TAKEOFF_D = 2.6; // 理想起跳點:欄前 2.6m(判定用時間域 err=|distToFence-TAKEOFF_D|/speed)
 const JUMP_SPAN = 4.4; // 一跳跨越的路徑長(m)
 const APPROACH_M = 14; // 進入「備跳」提示的距離
+const RACE_LANE = 0.95; // 競速:兩馬各偏路徑中線一側
+// AI 競速對手(依難度):skill=起跳品質期望、boostRatio=全速時間比
+const RACE_AI = {
+  kids: { skill: 0.35, boostRatio: 0.15 },
+  child: { skill: 0.48, boostRatio: 0.3 },
+  easy: { skill: 0.58, boostRatio: 0.45 },
+  normal: { skill: 0.7, boostRatio: 0.6 },
+  hard: { skill: 0.82, boostRatio: 0.78 },
+};
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
 // ---------- 人物(照抄 archery3d makePerson:臉部鐵則+關節人物鐵則+長腿) ----------
@@ -547,6 +562,27 @@ export class EquestrianGame {
     this.rider.group.scale.setScalar(0.95);
     this.horse.rig.add(this.rider.group);
 
+    // 競速模式的 AI 對手:銀灰馬+藍騎士(非競速模式隱藏)
+    this.aiHorse = makeHorse({ coat: 0x9aa0a8, mane: 0x5f6670 });
+    this.scene.add(this.aiHorse.group);
+    this.aiRider = makePerson({ shirt: 0x2f5f9a, pants: 0xe9e2d2, hair: 0x151515, scale: 0.95 });
+    for (const legKey of ["leftLeg", "rightLeg"]) {
+      this.aiRider[legKey].pivot.rotation.x = -1.25;
+      this.aiRider[legKey].pivot.rotation.z = legKey === "leftLeg" ? 0.5 : -0.5;
+      this.aiRider[legKey].joint.rotation.x = 1.5;
+    }
+    this.aiRider.leftArm.pivot.rotation.x = -0.95;
+    this.aiRider.leftArm.joint.rotation.x = -0.5;
+    this.aiRider.rightArm.pivot.rotation.x = -0.95;
+    this.aiRider.rightArm.joint.rotation.x = -0.5;
+    const aiHelmet = new THREE.Mesh(new THREE.SphereGeometry(0.27, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), new THREE.MeshStandardMaterial({ color: 0x2f5f9a, roughness: 0.4 }));
+    aiHelmet.position.y = 2.16;
+    this.aiRider.rig.add(aiHelmet);
+    this.aiRider.group.position.set(0, 1.02, 0.12);
+    this.aiRider.group.scale.setScalar(0.95);
+    this.aiHorse.rig.add(this.aiRider.group);
+    this.aiHorse.group.visible = false;
+
     this.buildCrowd();
     this.rebuildFences();
 
@@ -595,8 +631,20 @@ export class EquestrianGame {
   placeHorse() {
     const p = this.posAt(this.dist);
     const t = this.tangentAt(this.dist);
-    this.horse.group.position.set(p.x, this.jumpY(), p.z);
+    let ox = 0, oz = 0;
+    if (this.mode.race) { // 我方靠內線,AI 外線
+      ox = -t.z * RACE_LANE;
+      oz = t.x * RACE_LANE;
+    }
+    this.horse.group.position.set(p.x + ox, this.jumpY(), p.z + oz);
     this.horse.group.rotation.y = Math.atan2(t.x, t.z);
+    if (this.mode.race && this.aiHorse && this.aiHorse.group.visible) {
+      const ap = this.posAt(this.aiDist);
+      const at = this.tangentAt(this.aiDist);
+      const ay = this.aiJumpAnim ? Math.sin(Math.PI * clamp(this.aiJumpAnim.t, 0, 1)) * this.aiJumpAnim.height : 0;
+      this.aiHorse.group.position.set(ap.x + at.z * RACE_LANE, ay, ap.z - at.x * RACE_LANE);
+      this.aiHorse.group.rotation.y = Math.atan2(at.x, at.z);
+    }
   }
 
   jumpY() {
@@ -660,6 +708,16 @@ export class EquestrianGame {
     this.lap = 1;
     this.rebuildFences();
     this.finishDist = this.fences.length ? this.fences[this.fences.length - 1].dist + 22 : this.courseLen;
+    // 競速 AI 重置
+    this.aiDist = -2.5;
+    this.aiSpeed = 0;
+    this.aiGallopT = 0;
+    this.aiFenceIdx = 0;
+    this.aiJumpAnim = null;
+    this.aiKnockSlowT = 9;
+    this.knockSlowT = 9;
+    this.aiFinished = false;
+    if (this.aiHorse) this.aiHorse.group.visible = !!this.mode.race;
     this.placeHorse();
     // 起跑鏡頭直接切到馬後方(joash 教訓:lerp 穿場=整幀糊掉)
     const t0 = this.tangentAt(0);
@@ -729,7 +787,12 @@ export class EquestrianGame {
       fence.knocked = true;
       this.faults += 4;
       this.lastResult = "knock";
-      this.message = "碰桿!+4 罰分——穩住,下一道抓準綠區。";
+      if (this.mode.race) {
+        this.knockSlowT = 0; // 競速:碰桿=踉蹌減速 1.4 秒
+        this.message = "碰桿!馬兒踉蹌減速——穩住追回來!";
+      } else {
+        this.message = "碰桿!+4 罰分——穩住,下一道抓準綠區。";
+      }
       this.knockAnims.push({ fence, t: 0 });
       this.emitEvent("fence-knock", { idx: this.fenceIdx + 1, faults: this.faults });
     }
@@ -784,6 +847,25 @@ export class EquestrianGame {
 
   finishCourse() {
     this.phase = "ended";
+    if (this.mode.race) {
+      const win = !this.aiFinished; // 我方先觸發完賽=贏;AI 先到觸發=輸
+      const timeText = this.elapsed.toFixed(1) + " 秒";
+      if (win) this.spawnConfetti();
+      this.overlay = {
+        visible: true,
+        eyebrow: win ? "勝利!" : "惜敗",
+        title: win ? "第一個衝線!" : "AI 先到了……",
+        text: win
+          ? timeText + " 衝過終點,把藍騎士甩在後面!(碰桿 " + this.faults / 4 + " 次)"
+          : "差一點!穩住節奏、少碰桿,再來一場追回來!(用時 " + timeText + ")",
+        canResume: false,
+      };
+      this.emitEvent("race-end", { win, elapsed: this.elapsed });
+      this.message = win ? "勝利!" + timeText + " 先馳得點!" : "AI 先衝線——再來一場!";
+      this.saveGame(true);
+      this.pushHud();
+      return;
+    }
     const preset = DIFFICULTY_PRESETS[this.difficulty];
     const overTime = Math.max(0, this.elapsed - preset.timeAllowed);
     const timeFaults = preset.timeAllowed >= 999 ? 0 : Math.ceil(overTime / 4);
@@ -878,7 +960,9 @@ export class EquestrianGame {
       const preset = DIFFICULTY_PRESETS[this.difficulty];
       const boosting = this.input.isDown("up") || this.input.isDown("sprint");
       const slowing = this.input.isDown("down");
-      const target = preset.baseSpeed + (boosting ? preset.boost : 0) - (slowing ? 2.2 : 0);
+      let target = preset.baseSpeed + (boosting ? preset.boost : 0) - (slowing ? 2.2 : 0);
+      this.knockSlowT = (this.knockSlowT ?? 9) + delta;
+      if (this.mode.race && this.knockSlowT < 1.4) target *= 0.5; // 碰桿踉蹌
       this.speed += (Math.max(3, target) - this.speed) * Math.min(1, delta * 1.8);
       this.dist += this.speed * delta;
       this.gallopT += delta * (this.speed / 8);
@@ -902,6 +986,37 @@ export class EquestrianGame {
 
       if (!this.mode.endless && this.dist >= this.finishDist && this.phase !== "ended") {
         this.finishCourse();
+      }
+
+      // —— 競速 AI(同賽道外線):控速+起跳品質依難度,碰桿一樣踉蹌 ——
+      if (this.mode.race && this.phase !== "ended") {
+        const ai = RACE_AI[this.difficulty];
+        this.aiKnockSlowT += delta;
+        const aiBoosting = Math.sin(this.time * 0.7 + 1.3) * 0.5 + 0.5 < ai.boostRatio;
+        let aiTarget = preset.baseSpeed + (aiBoosting ? preset.boost : 0);
+        if (this.aiKnockSlowT < 1.4) aiTarget *= 0.5;
+        this.aiSpeed += (Math.max(3, aiTarget) - this.aiSpeed) * Math.min(1, delta * 1.8);
+        this.aiDist += this.aiSpeed * delta;
+        this.aiGallopT += delta * (this.aiSpeed / 8);
+        if (this.aiJumpAnim) {
+          this.aiJumpAnim.t += delta / this.aiJumpAnim.dur;
+          if (this.aiJumpAnim.t >= 1) {
+            const q = this.aiJumpAnim.quality;
+            this.aiJumpAnim = null;
+            if (q < 0.5) this.aiKnockSlowT = 0; // AI 碰桿踉蹌(不動桿子,桿子演出留給玩家欄)
+            this.aiFenceIdx += 1;
+          }
+        } else {
+          const aiFence = this.fences[this.aiFenceIdx];
+          if (aiFence && aiFence.dist - this.aiDist <= TAKEOFF_D + 0.3) {
+            const q = clamp(ai.skill + (Math.random() * 2 - 1) * 0.22, 0, 1);
+            this.aiJumpAnim = { t: 0, dur: JUMP_SPAN / Math.max(this.aiSpeed, 3), quality: q, height: 1.1 + q * 0.8 };
+          }
+        }
+        if (this.aiDist >= this.finishDist && !this.aiFinished) {
+          this.aiFinished = true;
+          if (this.phase !== "ended") this.finishCourse(); // AI 先到=直接結算(我方輸)
+        }
       }
     }
 
@@ -992,6 +1107,32 @@ export class EquestrianGame {
     h.neckPivot.rotation.x = Math.sin(t) * amp * 0.12;
     h.tail.rotation.x = 0.55 + Math.sin(t * 0.9) * 0.15;
     if (this.rider) this.rider.rig.rotation.x = amp * 0.18;
+
+    // AI 馬動畫(競速)
+    if (this.mode.race && this.aiHorse && this.aiHorse.group.visible) {
+      const ah = this.aiHorse;
+      if (this.aiJumpAnim) {
+        const k = clamp(this.aiJumpAnim.t, 0, 1);
+        const tuck = Math.sin(Math.PI * k);
+        ah.rig.rotation.x = -Math.cos(Math.PI * k) * 0.35;
+        ah.legs.forEach((leg, i) => {
+          leg.pivot.rotation.x = (i < 2 ? -1.3 : 0.85) * tuck;
+          leg.joint.rotation.x = (i < 2 ? 1.8 : 0.5) * tuck;
+        });
+      } else {
+        const aamp = clamp(this.aiSpeed / 14, 0, 0.62);
+        const at2 = this.aiGallopT * Math.PI * 2;
+        const phases2 = [0, Math.PI * 0.5, Math.PI, Math.PI * 1.5];
+        ah.rig.rotation.x = 0;
+        ah.legs.forEach((leg, i) => {
+          leg.pivot.rotation.x = Math.sin(at2 + phases2[i]) * aamp;
+          leg.joint.rotation.x = Math.max(0, Math.sin(at2 + phases2[i] + 0.8)) * aamp * 1.3;
+        });
+        ah.rig.position.y = Math.abs(Math.sin(at2)) * aamp * 0.14;
+        ah.neckPivot.rotation.x = Math.sin(at2) * aamp * 0.12;
+        ah.tail.rotation.x = 0.55 + Math.sin(at2 * 0.9) * 0.15;
+      }
+    }
   }
 
   updateCamera(delta) {
@@ -1051,7 +1192,11 @@ export class EquestrianGame {
       lap: this.lap,
       endless: !!this.mode.endless,
       timeText: `${mins}:${secs}`,
-      timeAllowed: preset.timeAllowed >= 999 ? "不限時" : `${preset.timeAllowed} 秒`,
+      timeAllowed: this.mode.race
+        ? (this.phase === "riding" || this.phase === "jumping"
+          ? (this.dist >= this.aiDist ? "領先 " + (this.dist - this.aiDist).toFixed(0) + " m" : "落後 " + (this.aiDist - this.dist).toFixed(0) + " m")
+          : "先到終點者勝")
+        : preset.timeAllowed >= 999 ? "不限時" : preset.timeAllowed + " 秒",
       modeLabel: this.mode.label,
       difficultyLabel: DIFFICULTY_LABELS[this.difficulty],
       phaseLabel: phaseLabels[this.phase] || "",

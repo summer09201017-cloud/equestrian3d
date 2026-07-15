@@ -195,6 +195,17 @@ function handleGameEvent(event) {
       pushCommentary("太早起跳了——等時機條進綠區再跳!", "cool", "太早起跳了,穩住再來。");
       break;
     }
+    case "race-end": {
+      audio.horn();
+      audio.crowdCheer(event.win ? 1 : 0.5);
+      audio.vibrate([110, 50, 120]);
+      pushCommentary(
+        event.win ? "第一個衝線!" + event.elapsed.toFixed(1) + " 秒!" : "AI 先到了——再來一場!",
+        event.win ? "hot" : "cool",
+        event.win ? "零罰分!完美的一輪,全場歡呼!" : "全程完成!辛苦了,好騎士!",
+      );
+      break;
+    }
     case "finish": {
       audio.horn();
       audio.crowdCheer(event.clearRound ? 1 : 0.6);
@@ -219,7 +230,7 @@ game.onEvent = handleGameEvent;
 game.onHudUpdate = (state) => {
   ui.faultsLabel.textContent = String(state.faults);
   ui.clearsLabel.textContent = String(state.clears);
-  ui.modeCode.textContent = ({ 標準賽: "標準", 決勝圈: "決勝", 練習場: "練習" })[state.modeLabel] || state.modeLabel;
+  ui.modeCode.textContent = ({ 標準賽: "標準", 決勝圈: "決勝", 雙騎競速: "競速", 練習場: "練習" })[state.modeLabel] || state.modeLabel;
   ui.fenceLabel.textContent = state.endless ? `${state.fenceIdx}/${state.fenceCount}·圈${state.lap}` : `${state.fenceIdx}/${state.fenceCount}`;
   ui.timeLabel.textContent = state.timeText;
   ui.lastFenceLabel.textContent =
