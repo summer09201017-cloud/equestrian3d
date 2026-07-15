@@ -13,11 +13,12 @@ import { loadSettings, saveSettings, loadSavedGame, saveGameState } from "./stor
 // ---------- 可調量值 ----------
 // window=起跳時機窗(秒,skijump 綠區同款);boost=加速增量;timeAllowed=容許時間(超時每 4 秒+1 罰分)
 export const DIFFICULTY_PRESETS = {
-  kids: { baseSpeed: 6.5, boost: 2.5, window: 0.34, fences: 6, timeAllowed: 999, assist: 0.5 },
-  child: { baseSpeed: 7.5, boost: 3.0, window: 0.26, fences: 7, timeAllowed: 120, assist: 0.3 },
-  easy: { baseSpeed: 8.5, boost: 3.6, window: 0.2, fences: 8, timeAllowed: 95, assist: 0.15 },
-  normal: { baseSpeed: 9.5, boost: 4.2, window: 0.15, fences: 8, timeAllowed: 80, assist: 0 },
-  hard: { baseSpeed: 10.5, boost: 5.0, window: 0.11, fences: 10, timeAllowed: 72, assist: 0 },
+  // 07-15 使用者回報「太容易」→ 全檔收緊:窗更窄、馬更快、時間更緊(幼兒保持友善)
+  kids: { baseSpeed: 7.0, boost: 2.5, window: 0.32, fences: 6, timeAllowed: 999, assist: 0.5 },
+  child: { baseSpeed: 8.2, boost: 3.0, window: 0.21, fences: 7, timeAllowed: 105, assist: 0.3 },
+  easy: { baseSpeed: 9.4, boost: 3.6, window: 0.15, fences: 8, timeAllowed: 82, assist: 0.12 },
+  normal: { baseSpeed: 10.6, boost: 4.2, window: 0.105, fences: 9, timeAllowed: 66, assist: 0 },
+  hard: { baseSpeed: 11.8, boost: 5.0, window: 0.075, fences: 11, timeAllowed: 56, assist: 0 },
 };
 
 export const DIFFICULTY_LABELS = {
@@ -713,11 +714,11 @@ export class EquestrianGame {
 
   resolveFence(fence, quality) {
     fence.resolved = true;
-    const clean = quality >= 0.45;
+    const clean = quality >= 0.5; // 07-15 加難:過欄門檻 0.45→0.5
     if (clean) {
       this.clears += 1;
       this.lastResult = "clear";
-      const perfect = quality >= 0.85;
+      const perfect = quality >= 0.88;
       this.message = perfect ? "完美起跳!輕鬆飛過!" : "過欄!繼續盯下一道。";
       this.emitEvent("fence-clear", { idx: this.fenceIdx + 1, perfect });
     } else {
