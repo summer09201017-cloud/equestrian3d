@@ -277,12 +277,17 @@ function makeHorse({ coat = 0x8a5a33, mane = 0x3a2a1c } = {}) {
     ear.rotation.x = -0.2;
     head.add(ear);
   }
-  const mane1 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.72, 0.16), maneMat);
-  mane1.rotation.x = 0.7;
-  mane1.position.set(0, 0.3, 0.02);
-  neckPivot.add(mane1);
-  const forelock = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.16, 0.1), maneMat);
-  forelock.position.set(0, 0.2, 0.05);
+  // 鬃毛(07-15 使用者點名要明顯):頸背鬃冠+垂右側鬃髮+額前瀏海,三件套
+  const maneCrest = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.88, 0.24), maneMat);
+  maneCrest.rotation.x = 0.7;
+  maneCrest.position.set(0, 0.36, -0.04); // 沿頸背露出來,不再埋進脖子
+  neckPivot.add(maneCrest);
+  const maneSide = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.74, 0.34), maneMat);
+  maneSide.rotation.x = 0.7;
+  maneSide.position.set(0.17, 0.24, 0.08); // 垂在頸右側(真馬鬃髮倒一邊)
+  neckPivot.add(maneSide);
+  const forelock = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.22, 0.12), maneMat);
+  forelock.position.set(0, 0.24, 0.08);
   head.add(forelock);
 
   const tail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.66, 0.14), maneMat);
