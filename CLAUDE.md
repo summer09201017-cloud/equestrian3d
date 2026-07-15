@@ -12,6 +12,9 @@
   `coatMat/maneMat` 共用材質 → `setHorseCoat` 改色不重建(HORSE_COATS 七色)。
 - 騎手=`makePerson` 坐姿掛在 `horse.rig`;`updateHorsePose` 奔跑相位/騰躍收腿。
 - 溫柔規則:沒按=auto weak jump(quality 0.18),永不淘汰。
+- 騎手角色(07-15):`RIDERS`(gyro 傑洛/johnny 喬尼,SBR 致敬皮)+`RIDER_SKILLS` 技能系統——
+  傑洛鋼球(K/E/觸控鈕,競速限定,黃煙尾跡+微追蹤,命中=對手落馬 `FALL_DUR` 秒後爬回;
+  玩家選喬尼時 AI 傑洛會回敬,冷卻較長)。競速對手固定騎「另一位」。
 - `this.running` 只給 RAF(athletics 撞名事故鐵則)。
 
 ## 換皮清單(騎驢版照這裡)

@@ -128,6 +128,7 @@
           <p>出發 / 起跳: 點畫面或空白鍵</p>
           <p>加速: 按住 W / ↑ / 加速鈕</p>
           <p>收步: 按住 S / ↓</p>
+          <p>鋼球(傑洛・競速): K / E / 鋼球鈕</p>
           <p>視角切換: V｜暫停: Esc / P</p>
         </div>
       </aside>
@@ -139,6 +140,7 @@
         </div>
         <div class="action-pad">
           <button data-action="shoot" class="shoot">起跳</button>
+          <button data-action="action">鋼球</button>
           <button data-action="camera">視角</button>
         </div>
       </div>
@@ -199,6 +201,12 @@
                 <option value="easy">入門</option>
                 <option value="normal">標準</option>
                 <option value="hard">職業</option>
+              </select>
+
+              <label class="field-label" for="riderSelect">騎手角色</label>
+              <select id="riderSelect">
+                <option value="gyro">傑洛・齊貝林</option>
+                <option value="johnny">喬尼・喬斯達</option>
               </select>
 
               <label class="field-label" for="horseCoatSelect">馬的毛色</label>

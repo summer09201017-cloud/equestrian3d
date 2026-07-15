@@ -10,6 +10,7 @@ const KEY_BINDINGS = {
   Space: "shoot",
   KeyJ: "pass",
   KeyK: "action",
+  KeyE: "action",
   KeyL: "switch",
   Tab: "switch",
   KeyV: "camera",

@@ -44,6 +44,7 @@ const ui = {
   modeDescription: document.querySelector("#modeDescription"),
   menuDifficultySelect: document.querySelector("#menuDifficultySelect"),
   horseCoatSelect: document.querySelector("#horseCoatSelect"),
+  riderSelect: document.querySelector("#riderSelect"),
   audioSelect: document.querySelector("#audioSelect"),
   modeMetaTitle: document.querySelector("#modeMetaTitle"),
   modeMetaGoal: document.querySelector("#modeMetaGoal"),
@@ -66,6 +67,7 @@ window.__game = game; // /smoke3d 通用鉤子
 let selectedModeId = game.modeId;
 let selectedDifficulty = game.difficulty;
 let selectedCoat = game.coatId;
+let selectedRider = game.riderId;
 let audioEnabled = settings.audioEnabled !== false;
 
 function persistSettings() {
@@ -73,6 +75,7 @@ function persistSettings() {
     difficulty: selectedDifficulty,
     modeId: selectedModeId,
     horseCoat: selectedCoat,
+    riderCharacter: selectedRider,
     audioEnabled,
   });
 }
@@ -104,6 +107,7 @@ function syncMenuCards() {
 function syncMenuControls() {
   ui.menuDifficultySelect.value = selectedDifficulty;
   ui.horseCoatSelect.value = selectedCoat;
+  ui.riderSelect.value = selectedRider;
   syncMenuCards();
 }
 
@@ -111,6 +115,7 @@ function syncGameConfigurationToMenu() {
   selectedModeId = game.modeId;
   selectedDifficulty = game.difficulty;
   selectedCoat = game.coatId;
+  selectedRider = game.riderId;
   syncMenuControls();
 }
 
@@ -324,6 +329,14 @@ ui.horseCoatSelect.addEventListener("change", (event) => {
   persistSettings();
 });
 
+ui.riderSelect.addEventListener("change", (event) => {
+  unlockAudio();
+  audio.uiTap();
+  selectedRider = event.target.value;
+  game.setRiderCharacter(selectedRider); // 立即換人(選單背景就看得到)
+  persistSettings();
+});
+
 ui.audioSelect.addEventListener("change", (event) => {
   unlockAudio();
   audio.uiTap();
@@ -337,6 +350,7 @@ ui.startMatchButton.addEventListener("click", () => {
     difficulty: selectedDifficulty,
     modeId: selectedModeId,
     horseCoat: selectedCoat,
+    riderCharacter: selectedRider,
   });
   game.startSelectedMatch();
   closeHomeScreen();

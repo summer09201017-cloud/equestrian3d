@@ -70,6 +70,20 @@ export const HORSE_COATS = {
   pinto: { label: "花斑(棕白)", coat: 0xb08050, mane: 0xefe9da },
 };
 
+// 騎手角色(SBR 致敬皮):傑洛=綠寬簷帽+下顎鬍+金牙;喬尼=星星藍衣+馬蹄鐵毛帽。
+// 競速模式對手自動騎「另一位」(兩人本來就是一起賽馬的搭檔)。
+export const RIDERS = {
+  gyro: { label: "傑洛·齊貝林", shirt: 0x7a4db8, pants: 0x4a3a2e, hair: 0xe6c95c }, // 紫上衣+棕帽+黃長髮+兩片綠披風(07-15 使用者拍板)
+  johnny: { label: "喬尼·喬斯達", shirt: 0xf2f0ec, pants: 0xf2f0ec, hair: 0xe6c95c }, // 白衣白帽+帽上星星(07-15 使用者拍板)
+};
+
+// 騎手技能(資料驅動,之後補喬尼的招照這格式加):傑洛=鋼球,雙騎競速限定
+export const RIDER_SKILLS = {
+  gyro: { label: "鋼球", cooldown: 7 },
+};
+const FALL_DUR = 2.4; // 落馬到爬回馬上的秒數(前 0.45s 摔、後 0.45s 爬回)
+const BALL_SPEED = 26;
+
 // ---------- 場地常數 ----------
 const TAKEOFF_D = 2.6; // 理想起跳點:欄前 2.6m(判定用時間域 err=|distToFence-TAKEOFF_D|/speed)
 const JUMP_SPAN = 4.4; // 一跳跨越的路徑長(m)
@@ -204,6 +218,7 @@ function makePerson({ shirt = 0x2f6f4e, pants = 0x2a3550, skin = 0xf3cca6, hair 
   smile.position.set(0, 2.04, 0.21);
   smile.rotation.z = Math.PI;
   rig.add(smile);
+  // smile 一併回傳:角色皮要換嘴(如金牙)時把原生嘴關掉,避免雙嘴
 
   const shoeMat = new THREE.MeshStandardMaterial({ color: 0x2a2622, roughness: 0.85 });
   const mkArm = (x) => {
@@ -235,7 +250,132 @@ function makePerson({ shirt = 0x2f6f4e, pants = 0x2a3550, skin = 0xf3cca6, hair 
   const rightLeg = mkLeg(0.15);
 
   group.scale.setScalar(scale);
-  return { group, rig, head, waist, leftArm, rightArm, leftLeg, rightLeg };
+  return { group, rig, head, waist, leftArm, rightArm, leftLeg, rightLeg, smile };
+}
+
+// ---------- 騎手角色造型(掛在 makePerson 的 rig 上,座姿統一 poseRiderOnSaddle) ----------
+function makeStar(radius, color) {
+  const shape = new THREE.Shape();
+  for (let i = 0; i < 10; i += 1) {
+    const a = (i / 10) * Math.PI * 2 - Math.PI / 2;
+    const r = i % 2 === 0 ? radius : radius * 0.45;
+    const x = Math.cos(a) * r;
+    const y = Math.sin(a) * r;
+    if (i === 0) shape.moveTo(x, y);
+    else shape.lineTo(x, y);
+  }
+  shape.closePath();
+  return new THREE.Mesh(new THREE.ShapeGeometry(shape), new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }));
+}
+
+// 傑洛的鋼球:綠色金屬球+深綠溝紋環(飛行時自旋+黃煙尾跡)
+function makeSteelBall() {
+  const g = new THREE.Group();
+  const ball = new THREE.Mesh(
+    new THREE.SphereGeometry(0.24, 14, 12),
+    new THREE.MeshStandardMaterial({ color: 0x2f8f4f, roughness: 0.35, metalness: 0.55 }),
+  );
+  g.add(ball);
+  const groove = new THREE.Mesh(
+    new THREE.TorusGeometry(0.24, 0.035, 6, 20),
+    new THREE.MeshStandardMaterial({ color: 0x1d5c33, roughness: 0.5 }),
+  );
+  g.add(groove);
+  return g;
+}
+
+function makeRiderCharacter(riderId) {
+  const spec = RIDERS[riderId] || RIDERS.gyro;
+  const rider = makePerson({
+    shirt: spec.shirt,
+    pants: spec.pants,
+    hair: spec.hair,
+    gender: "f", // 兩位都是長髮(借長髮版後腦髮)
+    scale: 0.95,
+  });
+  // 兩側垂髮(兩位都是金色長髮)
+  const hairSideMat = new THREE.MeshStandardMaterial({ color: spec.hair, roughness: 0.85 });
+  for (const x of [-0.21, 0.21]) {
+    const lock = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.32, 0.14), hairSideMat);
+    lock.position.set(x, 1.97, -0.03);
+    rider.rig.add(lock);
+  }
+  if (riderId === "johnny") {
+    // 白色毛帽+帽上幾顆星+正面金馬蹄鐵+胸前藍星(白衣要用深色星才看得見)
+    // 帽=罩在頭髮上的圓頂,下緣停在眉上(y2.2)——蓋到眼睛高度眼珠會「長到帽子上」(07-15 踩過)
+    const capMat = new THREE.MeshStandardMaterial({ color: 0xf2f0ec, roughness: 0.7 });
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.268, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), capMat);
+    cap.position.y = 2.2;
+    rider.rig.add(cap);
+    const horseshoe = new THREE.Mesh(new THREE.TorusGeometry(0.055, 0.016, 6, 12, Math.PI), new THREE.MeshBasicMaterial({ color: 0xd8a83c }));
+    horseshoe.position.set(0, 2.24, 0.28);
+    horseshoe.rotation.x = -0.15;
+    rider.rig.add(horseshoe);
+    // 帽上星星:沿帽面繞一圈貼幾顆藍星,面朝外(正前方留給馬蹄鐵);半徑要比帽面突出,埋進去就看不見(07-15 踩過)
+    for (const a of [-1.1, -0.55, 0.55, 1.1, Math.PI]) {
+      const s = makeStar(0.05, 0x2f4fa8);
+      const r = 0.28;
+      s.position.set(Math.sin(a) * r, 2.24, Math.cos(a) * r);
+      s.rotation.order = "YXZ";
+      s.rotation.y = a;
+      s.rotation.x = -0.15;
+      rider.rig.add(s);
+    }
+    const chestStar = makeStar(0.1, 0x2f4fa8);
+    chestStar.position.set(0, 1.54, 0.171);
+    rider.rig.add(chestStar);
+  } else {
+    // 棕寬簷帽+深帽帶+下顎環鬍+一口金牙的笑(原生嘴關掉,不然變雙嘴)
+    rider.smile.visible = false;
+    const hatMat = new THREE.MeshStandardMaterial({ color: 0x6b4526, roughness: 0.75 });
+    const bandMat = new THREE.MeshStandardMaterial({ color: 0x3e2a18, roughness: 0.6 });
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.37, 0.37, 0.03, 18), hatMat);
+    brim.position.y = 2.26;
+    rider.rig.add(brim);
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.218, 0.218, 0.07, 14), bandMat);
+    band.position.y = 2.3;
+    rider.rig.add(band);
+    const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.215, 0.22, 14), hatMat);
+    crown.position.y = 2.4;
+    rider.rig.add(crown);
+    const beard = new THREE.Mesh(new THREE.TorusGeometry(0.195, 0.028, 6, 14, Math.PI), new THREE.MeshStandardMaterial({ color: 0x3a2a16, roughness: 0.9 }));
+    beard.position.set(0, 1.95, 0); // 貼著下顎線,壓低避免看起來像第二張嘴
+    beard.rotation.x = Math.PI / 2; // 半環轉到臉前方
+    rider.rig.add(beard);
+    const grill = new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.022, 8, 14, Math.PI), new THREE.MeshBasicMaterial({ color: 0xd8a83c }));
+    grill.position.set(0, 2.045, 0.218);
+    grill.rotation.z = Math.PI;
+    rider.rig.add(grill);
+    // 分成兩塊的大綠披風:左右各一片,樞紐掛在肩上、布面垂下——updateHorsePose 會依馬速讓它揚起飄動
+    const capeMat = new THREE.MeshStandardMaterial({ color: 0x3f8f5a, roughness: 0.8, side: THREE.DoubleSide });
+    rider.capes = [];
+    for (const x of [-0.21, 0.21]) {
+      const pivot = new THREE.Group();
+      pivot.position.set(x, 1.8, -0.17);
+      const cape = new THREE.Mesh(new THREE.BoxGeometry(0.34, 1.0, 0.03), capeMat);
+      cape.position.y = -0.5;
+      pivot.add(cape);
+      pivot.rotation.x = 0.3; // 靜止時披在馬背上
+      rider.rig.add(pivot);
+      rider.capes.push(pivot);
+    }
+  }
+  return rider;
+}
+
+function poseRiderOnSaddle(rider) {
+  rider.leftLeg.pivot.rotation.x = -1.25;
+  rider.leftLeg.pivot.rotation.z = 0.5;
+  rider.leftLeg.joint.rotation.x = 1.5;
+  rider.rightLeg.pivot.rotation.x = -1.25;
+  rider.rightLeg.pivot.rotation.z = -0.5;
+  rider.rightLeg.joint.rotation.x = 1.5;
+  rider.leftArm.pivot.rotation.x = -0.95;
+  rider.leftArm.joint.rotation.x = -0.5;
+  rider.rightArm.pivot.rotation.x = -0.95;
+  rider.rightArm.joint.rotation.x = -0.5;
+  rider.group.position.set(0, 1.02, 0.12);
+  rider.group.scale.setScalar(0.95);
 }
 
 // ---------- 馬(矩形身體鐵則的四足版:箱體軀幹+雙節腿+有臉[眼睛]+鬃毛尾巴) ----------
@@ -356,6 +496,15 @@ export class EquestrianGame {
     this.modeId = GAME_MODES[settings.modeId] ? settings.modeId : "standard";
     this.mode = getModeConfig(this.modeId);
     this.coatId = HORSE_COATS[settings.horseCoat] ? settings.horseCoat : "brown";
+    this.riderId = RIDERS[settings.riderCharacter] ? settings.riderCharacter : "gyro";
+
+    // 技能系統(鋼球):飛行中的球、煙霧粒子、冷卻、雙方落馬計時(>=FALL_DUR=在馬上)
+    this.balls = [];
+    this.smokePuffs = [];
+    this.skillCd = 0;
+    this.aiSkillCd = 9;
+    this.meFall = 9;
+    this.aiFall = 9;
 
     this.input = new InputManager();
     this.input.bindTouchButtons(this.touchRoot);
@@ -535,53 +684,17 @@ export class EquestrianGame {
       this.scene.add(dot);
     }
 
-    // 馬+騎手(紅衣白褲黑帽,經典馬術裝);毛色照設定
+    // 馬+騎手(角色可選:傑洛/喬尼);毛色照設定
     const coat = HORSE_COATS[this.coatId] || HORSE_COATS.brown;
     this.horse = makeHorse({ coat: coat.coat, mane: coat.mane });
     this.scene.add(this.horse.group);
-    this.rider = makePerson({ shirt: 0xb03030, pants: 0xe9e2d2, hair: 0x2b2119, scale: 0.95 });
-    this.rider.leftLeg.pivot.rotation.x = -1.25;
-    this.rider.leftLeg.pivot.rotation.z = 0.5;
-    this.rider.leftLeg.joint.rotation.x = 1.5;
-    this.rider.rightLeg.pivot.rotation.x = -1.25;
-    this.rider.rightLeg.pivot.rotation.z = -0.5;
-    this.rider.rightLeg.joint.rotation.x = 1.5;
-    this.rider.leftArm.pivot.rotation.x = -0.95;
-    this.rider.leftArm.joint.rotation.x = -0.5;
-    this.rider.rightArm.pivot.rotation.x = -0.95;
-    this.rider.rightArm.joint.rotation.x = -0.5;
-    const helmetMat = new THREE.MeshStandardMaterial({ color: 0x1c1c22, roughness: 0.4 });
-    const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.27, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), helmetMat);
-    helmet.position.y = 2.16;
-    this.rider.rig.add(helmet);
-    const brim = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.04, 0.18), helmetMat);
-    brim.position.set(0, 2.14, 0.24);
-    this.rider.rig.add(brim);
-    // 騎手掛在馬鞍上(座姿:人物髖 ~1.0,鞍面 ~1.6 → group 上移 0.62)
-    this.rider.group.position.set(0, 1.02, 0.12);
-    this.rider.group.scale.setScalar(0.95);
-    this.horse.rig.add(this.rider.group);
 
-    // 競速模式的 AI 對手:銀灰馬+藍騎士(非競速模式隱藏)
+    // 競速模式的 AI 對手:銀灰馬(非競速模式隱藏);騎手=玩家沒選的那位
     this.aiHorse = makeHorse({ coat: 0x9aa0a8, mane: 0x5f6670 });
     this.scene.add(this.aiHorse.group);
-    this.aiRider = makePerson({ shirt: 0x2f5f9a, pants: 0xe9e2d2, hair: 0x151515, scale: 0.95 });
-    for (const legKey of ["leftLeg", "rightLeg"]) {
-      this.aiRider[legKey].pivot.rotation.x = -1.25;
-      this.aiRider[legKey].pivot.rotation.z = legKey === "leftLeg" ? 0.5 : -0.5;
-      this.aiRider[legKey].joint.rotation.x = 1.5;
-    }
-    this.aiRider.leftArm.pivot.rotation.x = -0.95;
-    this.aiRider.leftArm.joint.rotation.x = -0.5;
-    this.aiRider.rightArm.pivot.rotation.x = -0.95;
-    this.aiRider.rightArm.joint.rotation.x = -0.5;
-    const aiHelmet = new THREE.Mesh(new THREE.SphereGeometry(0.27, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), new THREE.MeshStandardMaterial({ color: 0x2f5f9a, roughness: 0.4 }));
-    aiHelmet.position.y = 2.16;
-    this.aiRider.rig.add(aiHelmet);
-    this.aiRider.group.position.set(0, 1.02, 0.12);
-    this.aiRider.group.scale.setScalar(0.95);
-    this.aiHorse.rig.add(this.aiRider.group);
     this.aiHorse.group.visible = false;
+
+    this.applyRiderCharacter();
 
     this.buildCrowd();
     this.rebuildFences();
@@ -663,16 +776,156 @@ export class EquestrianGame {
   }
 
   // ---------- 局面控制 ----------
-  applyPresentation({ difficulty, modeId, horseCoat }) {
+  applyPresentation({ difficulty, modeId, horseCoat, riderCharacter }) {
     if (difficulty && DIFFICULTY_PRESETS[difficulty]) this.difficulty = difficulty;
     if (modeId && GAME_MODES[modeId]) {
       this.modeId = modeId;
       this.mode = getModeConfig(modeId);
     }
     if (horseCoat && HORSE_COATS[horseCoat]) this.setHorseCoat(horseCoat);
-    saveSettings({ difficulty: this.difficulty, modeId: this.modeId, horseCoat: this.coatId });
-    this.message = `${this.mode.label} · ${DIFFICULTY_LABELS[this.difficulty]} · ${HORSE_COATS[this.coatId].label} 已設定。`;
+    if (riderCharacter && RIDERS[riderCharacter]) this.setRiderCharacter(riderCharacter);
+    saveSettings({ difficulty: this.difficulty, modeId: this.modeId, horseCoat: this.coatId, riderCharacter: this.riderId });
+    this.message = `${this.mode.label} · ${DIFFICULTY_LABELS[this.difficulty]} · ${RIDERS[this.riderId].label} 騎 ${HORSE_COATS[this.coatId].label} 已設定。`;
     this.pushHud();
+  }
+
+  // 換騎手角色:整組重掛(帽/鬍/星星是結構件,不能只換材質色);對手騎另一位
+  applyRiderCharacter() {
+    if (this.rider) this.horse.rig.remove(this.rider.group);
+    this.rider = makeRiderCharacter(this.riderId);
+    poseRiderOnSaddle(this.rider);
+    this.horse.rig.add(this.rider.group);
+    if (this.aiHorse) {
+      if (this.aiRider) this.aiHorse.rig.remove(this.aiRider.group);
+      this.aiRider = makeRiderCharacter(this.riderId === "gyro" ? "johnny" : "gyro");
+      poseRiderOnSaddle(this.aiRider);
+      this.aiHorse.rig.add(this.aiRider.group);
+    }
+  }
+
+  setRiderCharacter(riderId) {
+    if (!RIDERS[riderId] || riderId === this.riderId) return;
+    this.riderId = riderId;
+    if (this.horse) this.applyRiderCharacter();
+  }
+
+  // ---------- 技能:傑洛的鋼球 ----------
+  tryUseSkill() {
+    if (this.phase !== "riding" && this.phase !== "jumping") return;
+    if (!RIDER_SKILLS[this.riderId]) {
+      this.message = "這位騎手沒有鋼球——傑洛才會這招!";
+      this.pushHud();
+      return;
+    }
+    if (!this.mode.race) {
+      this.message = "鋼球要在「雙騎競速」對決時才派得上用場!";
+      this.pushHud();
+      return;
+    }
+    if (this.skillCd > 0) {
+      this.message = `鋼球回轉中……還要 ${this.skillCd.toFixed(1)} 秒`;
+      this.pushHud();
+      return;
+    }
+    if (this.aiFall < FALL_DUR + 1) {
+      this.message = "對手還在爬起來——等他上馬再丟!";
+      this.pushHud();
+      return;
+    }
+    this.skillCd = RIDER_SKILLS[this.riderId].cooldown;
+    this.throwSteelBall("me");
+    this.message = "傑洛擲出鋼球!";
+    this.emitEvent("skill", { who: "me" });
+    this.pushHud();
+  }
+
+  throwSteelBall(from) {
+    const srcHorse = from === "me" ? this.horse : this.aiHorse;
+    if (!srcHorse) return;
+    const mesh = makeSteelBall();
+    const sp = srcHorse.group.position;
+    mesh.position.set(sp.x, 2.3, sp.z);
+    this.scene.add(mesh);
+    this.balls.push({ mesh, vel: new THREE.Vector3(0, 2.5, 0), t: 0, from, smokeT: 0, dead: false });
+  }
+
+  spawnSmokePuff(pos, big = false) {
+    const puff = new THREE.Mesh(
+      new THREE.SphereGeometry(big ? 0.22 : 0.13, 8, 8),
+      new THREE.MeshBasicMaterial({ color: 0xf2d24a, transparent: true, opacity: 0.75 }),
+    );
+    puff.position.copy(pos);
+    if (big) {
+      puff.position.x += (Math.random() - 0.5) * 0.8;
+      puff.position.y += (Math.random() - 0.5) * 0.8;
+      puff.position.z += (Math.random() - 0.5) * 0.8;
+    }
+    this.scene.add(puff);
+    this.smokePuffs.push({ mesh: puff, t: 0 });
+  }
+
+  updateSkills(delta) {
+    this.meFall = (this.meFall ?? 9) + delta;
+    this.aiFall = (this.aiFall ?? 9) + delta;
+    if (this.skillCd > 0) this.skillCd = Math.max(0, this.skillCd - delta);
+
+    for (const b of this.balls) {
+      b.t += delta;
+      const targetHorse = b.from === "me" ? this.aiHorse : this.horse;
+      if (!targetHorse) {
+        b.dead = true;
+        continue;
+      }
+      const tp = targetHorse.group.position;
+      const aim = new THREE.Vector3(tp.x, 1.9, tp.z).sub(b.mesh.position);
+      const distTo = aim.length();
+      aim.normalize().multiplyScalar(BALL_SPEED);
+      b.vel.lerp(aim, Math.min(1, delta * 8)); // 微追蹤:鋼球會轉彎咬住目標
+      b.mesh.position.addScaledVector(b.vel, delta);
+      b.mesh.rotation.x += 15 * delta; // 高速自旋
+      b.mesh.rotation.z += 5 * delta;
+      // 黃色煙霧尾跡
+      b.smokeT += delta;
+      while (b.smokeT > 0.035) {
+        b.smokeT -= 0.035;
+        this.spawnSmokePuff(b.mesh.position);
+      }
+      if (b.t > 2.4) b.dead = true;
+      if (distTo < 1.4 && !b.dead) {
+        b.dead = true;
+        for (let i = 0; i < 12; i += 1) this.spawnSmokePuff(b.mesh.position, true); // 命中黃煙爆開
+        const fallOk = b.from === "me" ? this.aiFall >= FALL_DUR : this.meFall >= FALL_DUR;
+        if (fallOk) {
+          if (b.from === "me") {
+            this.aiFall = 0;
+            const other = RIDERS[this.riderId === "gyro" ? "johnny" : "gyro"].label;
+            this.message = `鋼球命中!${other} 被打下馬!`;
+          } else {
+            this.meFall = 0;
+            this.message = "被鋼球打下馬了!馬兒停下等你——馬上爬回去!";
+          }
+          this.emitEvent("skill-hit", { from: b.from });
+          this.pushHud();
+        }
+      }
+    }
+    this.balls = this.balls.filter((b) => {
+      if (b.dead) this.scene.remove(b.mesh);
+      return !b.dead;
+    });
+
+    for (const p of this.smokePuffs) {
+      p.t += delta;
+      p.mesh.scale.setScalar(1 + p.t * 3.2);
+      p.mesh.material.opacity = Math.max(0, 0.75 * (1 - p.t / 0.6));
+    }
+    this.smokePuffs = this.smokePuffs.filter((p) => {
+      if (p.t >= 0.6) {
+        this.scene.remove(p.mesh);
+        return false;
+      }
+      return true;
+    });
   }
 
   // 換毛色:全身共用 coatMat/maneMat,改材質色即可(不重建馬)
@@ -717,6 +970,15 @@ export class EquestrianGame {
     this.aiKnockSlowT = 9;
     this.knockSlowT = 9;
     this.aiFinished = false;
+    // 技能重置
+    for (const b of this.balls) this.scene.remove(b.mesh);
+    for (const p of this.smokePuffs) this.scene.remove(p.mesh);
+    this.balls = [];
+    this.smokePuffs = [];
+    this.skillCd = 0;
+    this.aiSkillCd = 6 + Math.random() * 4;
+    this.meFall = 9;
+    this.aiFall = 9;
     if (this.aiHorse) this.aiHorse.group.visible = !!this.mode.race;
     this.placeHorse();
     // 起跑鏡頭直接切到馬後方(joash 教訓:lerp 穿場=整幀糊掉)
@@ -733,6 +995,7 @@ export class EquestrianGame {
   // 出發/起跳共用(空白鍵/點畫面/觸控跳鍵)
   jump() {
     if (this.overlay.visible) return;
+    if ((this.meFall ?? 9) < FALL_DUR) return; // 人還在地上,先爬回馬再說
     if (this.phase === "gate") {
       this.phase = "riding";
       this.speed = DIFFICULTY_PRESETS[this.difficulty].baseSpeed * 0.6;
@@ -963,7 +1226,11 @@ export class EquestrianGame {
       let target = preset.baseSpeed + (boosting ? preset.boost : 0) - (slowing ? 2.2 : 0);
       this.knockSlowT = (this.knockSlowT ?? 9) + delta;
       if (this.mode.race && this.knockSlowT < 1.4) target *= 0.5; // 碰桿踉蹌
-      this.speed += (Math.max(3, target) - this.speed) * Math.min(1, delta * 1.8);
+      // 技能鍵(K/E/觸控「鋼球」)
+      if (this.input.consumePress("action")) this.tryUseSkill();
+      const meDown = this.meFall < FALL_DUR; // 被鋼球打下馬:馬停下等騎手爬回
+      if (meDown) target = 0;
+      this.speed += (Math.max(meDown ? 0 : 3, target) - this.speed) * Math.min(1, delta * (meDown ? 4 : 1.8));
       this.dist += this.speed * delta;
       this.gallopT += delta * (this.speed / 8);
 
@@ -995,9 +1262,22 @@ export class EquestrianGame {
         const aiBoosting = Math.sin(this.time * 0.7 + 1.3) * 0.5 + 0.5 < ai.boostRatio;
         let aiTarget = preset.baseSpeed + (aiBoosting ? preset.boost : 0);
         if (this.aiKnockSlowT < 1.4) aiTarget *= 0.5;
-        this.aiSpeed += (Math.max(3, aiTarget) - this.aiSpeed) * Math.min(1, delta * 1.8);
+        const aiDown = this.aiFall < FALL_DUR;
+        if (aiDown) aiTarget = 0;
+        this.aiSpeed += (Math.max(aiDown ? 0 : 3, aiTarget) - this.aiSpeed) * Math.min(1, delta * (aiDown ? 4 : 1.8));
         this.aiDist += this.aiSpeed * delta;
         this.aiGallopT += delta * (this.aiSpeed / 8);
+        // 對面若是傑洛(玩家選喬尼),AI 也會回敬鋼球——冷卻長、有預告,溫柔版
+        if (this.riderId === "johnny" && !aiDown) {
+          this.aiSkillCd -= delta;
+          const gap = Math.abs(this.aiDist - this.dist);
+          if (this.aiSkillCd <= 0 && gap > 3 && gap < 26 && this.meFall >= FALL_DUR + 1) {
+            this.aiSkillCd = 14 + Math.random() * 5;
+            this.throwSteelBall("ai");
+            this.message = "對面的傑洛擲出鋼球——小心!";
+            this.pushHud();
+          }
+        }
         if (this.aiJumpAnim) {
           this.aiJumpAnim.t += delta / this.aiJumpAnim.dur;
           if (this.aiJumpAnim.t >= 1) {
@@ -1006,7 +1286,7 @@ export class EquestrianGame {
             if (q < 0.5) this.aiKnockSlowT = 0; // AI 碰桿踉蹌(不動桿子,桿子演出留給玩家欄)
             this.aiFenceIdx += 1;
           }
-        } else {
+        } else if (!aiDown) {
           const aiFence = this.fences[this.aiFenceIdx];
           if (aiFence && aiFence.dist - this.aiDist <= TAKEOFF_D + 0.3) {
             const q = clamp(ai.skill + (Math.random() * 2 - 1) * 0.22, 0, 1);
@@ -1019,6 +1299,8 @@ export class EquestrianGame {
         }
       }
     }
+
+    if (!paused) this.updateSkills(delta);
 
     // 撞落的頂桿:往前滾落到地
     for (const k of this.knockAnims) {
@@ -1074,6 +1356,29 @@ export class EquestrianGame {
   updateHorsePose() {
     const h = this.horse;
     if (!h) return;
+    // 披風飄動(傑洛):靜止微垂,馬越快揚得越高、抖動越大;左右兩片相位錯開
+    const animCapes = (rider, speed, tt) => {
+      if (!rider || !rider.capes) return;
+      const lift = clamp(speed / 12, 0, 1);
+      rider.capes.forEach((p, i) => {
+        p.rotation.x = 0.3 + lift * 0.7 + Math.sin(tt + i * 0.9) * (0.05 + lift * 0.2);
+        p.rotation.z = (i === 0 ? 1 : -1) * (0.04 + Math.sin(tt * 0.8 + i * 1.7) * 0.06) * (0.4 + lift * 0.9);
+      });
+    };
+    animCapes(this.rider, this.phase === "riding" || this.phase === "jumping" ? this.speed : 0, this.gallopT * Math.PI * 2.4);
+    animCapes(this.aiRider, this.aiSpeed || 0, (this.aiGallopT || 0) * Math.PI * 2.4);
+    // 被鋼球打下馬:騎手往側邊滑落到地,停一拍再爬回鞍上(卡通式,不猙獰)
+    const animFall = (rider, t, side) => {
+      if (!rider) return;
+      let k = 0;
+      if (t < FALL_DUR) k = t < 0.45 ? t / 0.45 : t > FALL_DUR - 0.45 ? (FALL_DUR - t) / 0.45 : 1;
+      k = clamp(k, 0, 1);
+      rider.group.rotation.z = side * 1.2 * k;
+      rider.group.position.y = 1.02 - 0.85 * k;
+      rider.group.position.x = side * 0.65 * k;
+    };
+    animFall(this.rider, this.meFall ?? 9, -1);
+    animFall(this.aiRider, this.aiFall ?? 9, 1);
     if (this.phase === "jumping" && this.jumpAnim) {
       // 起跳:前腿收、後腿蹬、身體沿弧線俯仰;騎手前傾(two-point 跳姿)
       const k = clamp(this.jumpAnim.t, 0, 1);

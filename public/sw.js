@@ -1,5 +1,5 @@
 // 網路優先 HTML+快取優先資產(07-13 修復:cache-first 舊 index 會在部署後 404 壞站)
-const CACHE_NAME = "equestrian3d-nf1";
+const CACHE_NAME = "equestrian3d-nf2"; // nf2:騎手角色(傑洛/喬尼)+鋼球技能
 const CORE_ASSETS = ["/", "/index.html", "/manifest.webmanifest", "/icon.svg", "/icon-maskable.svg"];
 
 self.addEventListener("install", (event) => {
