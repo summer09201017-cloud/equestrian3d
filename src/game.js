@@ -236,18 +236,18 @@ function makeHorse({ coat = 0x8a5a33, mane = 0x3a2a1c } = {}) {
 
   // 軀幹:矩形箱體(胸腔+臀段),不用圓筒
   const body = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.62, 1.7), coatMat);
-  body.position.set(0, 1.38, 0);
+  body.position.set(0, 1.58, 0);
   rig.add(body);
   const chestCap = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.5, 0.4), coatMat);
-  chestCap.position.set(0, 1.42, 0.95);
+  chestCap.position.set(0, 1.62, 0.95);
   rig.add(chestCap);
   const rump = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.5, 0.42), coatMat);
-  rump.position.set(0, 1.4, -0.95);
+  rump.position.set(0, 1.6, -0.95);
   rig.add(rump);
 
   // 頸(斜上)+頭(兩側眼睛=臉部鐵則動物版)+雙耳+鬃毛
   const neckPivot = new THREE.Group();
-  neckPivot.position.set(0, 1.62, 1.05);
+  neckPivot.position.set(0, 1.82, 1.05);
   rig.add(neckPivot);
   const neck = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.72, 0.34), coatMat);
   neck.rotation.x = 0.7;
@@ -291,7 +291,7 @@ function makeHorse({ coat = 0x8a5a33, mane = 0x3a2a1c } = {}) {
   head.add(forelock);
 
   const tail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.66, 0.14), maneMat);
-  tail.position.set(0, 1.25, -1.22);
+  tail.position.set(0, 1.45, -1.22);
   tail.rotation.x = 0.55;
   rig.add(tail);
 
@@ -301,10 +301,10 @@ function makeHorse({ coat = 0x8a5a33, mane = 0x3a2a1c } = {}) {
       upperMaterial: coatMat,
       lowerMaterial: sock ? sockMat : coatMat,
       endMaterial: hoofMat,
-      upperLen: 0.52, lowerLen: 0.5, upperRadius: 0.085, lowerRadius: 0.062, // 長腿 v2(07-15 點名:馬腿再長)
+      upperLen: 0.62, lowerLen: 0.6, upperRadius: 0.085, lowerRadius: 0.062, // 長腿 v3(07-15 再點名) // 長腿 v2(07-15 點名:馬腿再長)
       end: "foot",
     });
-    leg.pivot.position.set(x, 1.15, z);
+    leg.pivot.position.set(x, 1.35, z);
     rig.add(leg.pivot);
     return leg;
   };
@@ -317,13 +317,13 @@ function makeHorse({ coat = 0x8a5a33, mane = 0x3a2a1c } = {}) {
 
   // 鞍+紅鞍墊+韁繩
   const saddle = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.62), new THREE.MeshStandardMaterial({ color: 0x4a2f1c, roughness: 0.5 }));
-  saddle.position.set(0, 1.75, 0.12);
+  saddle.position.set(0, 1.95, 0.12);
   rig.add(saddle);
   const pad = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.06, 0.78), new THREE.MeshStandardMaterial({ color: 0xb03030, roughness: 0.85 }));
-  pad.position.set(0, 1.7, 0.12);
+  pad.position.set(0, 1.9, 0.12);
   rig.add(pad);
   const rein = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.02, 1.15), new THREE.MeshStandardMaterial({ color: 0x33241a }));
-  rein.position.set(0, 2.05, 0.75);
+  rein.position.set(0, 2.25, 0.75);
   rein.rotation.x = -0.35;
   rig.add(rein);
 
@@ -441,24 +441,24 @@ export class EquestrianGame {
       g.position.copy(p);
       g.rotation.y = yaw;
       for (const side of [-1, 1]) {
-        const post = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.6, 0.16), woodMat);
-        post.position.set(side * 1.7, 0.8, 0);
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.9, 0.16), woodMat);
+        post.position.set(side * 1.7, 0.95, 0);
         g.add(post);
         const flag = new THREE.Mesh(
           new THREE.PlaneGeometry(0.3, 0.2),
           new THREE.MeshStandardMaterial({ color: side < 0 ? 0xd8433c : 0xf5f5f5, side: THREE.DoubleSide }),
         );
-        flag.position.set(side * 1.7, 1.75, 0);
+        flag.position.set(side * 1.7, 2.05, 0);
         g.add(flag);
       }
       const railMat = new THREE.MeshStandardMaterial({ color: railColors[i % railColors.length], roughness: 0.6 });
       const lowRail = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 3.3, 10), railMat);
       lowRail.rotation.z = Math.PI / 2;
-      lowRail.position.y = 0.62;
+      lowRail.position.y = 0.8;
       g.add(lowRail);
       const topRail = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 3.3, 10), railMat);
       topRail.rotation.z = Math.PI / 2;
-      topRail.position.y = 1.06;
+      topRail.position.y = 1.35;
       g.add(topRail);
       const numPlate = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.34, 0.05), new THREE.MeshStandardMaterial({ color: 0xf6d743 }));
       numPlate.position.set(-2.1, 0.5, 0);
@@ -542,7 +542,7 @@ export class EquestrianGame {
     brim.position.set(0, 2.14, 0.24);
     this.rider.rig.add(brim);
     // 騎手掛在馬鞍上(座姿:人物髖 ~1.0,鞍面 ~1.6 → group 上移 0.62)
-    this.rider.group.position.set(0, 0.82, 0.12);
+    this.rider.group.position.set(0, 1.02, 0.12);
     this.rider.group.scale.setScalar(0.95);
     this.horse.rig.add(this.rider.group);
 
@@ -704,7 +704,7 @@ export class EquestrianGame {
       t: 0,
       dur,
       quality,
-      height: hop ? 0.5 : 0.9 + quality * 0.7,
+      height: hop ? 0.6 : 1.1 + quality * 0.8,
       fence: hop ? null : fence,
     };
     this.phase = "jumping";
@@ -737,7 +737,7 @@ export class EquestrianGame {
         f.resolved = false;
         if (f.knocked) {
           f.knocked = false;
-          f.topRail.position.set(0, 1.06, 0);
+          f.topRail.position.set(0, 1.35, 0);
           f.topRail.rotation.set(0, 0, Math.PI / 2);
         }
         f.dist += this.courseLen;
@@ -871,7 +871,7 @@ export class EquestrianGame {
     for (const k of this.knockAnims) {
       k.t += delta;
       const kt = clamp(k.t / 0.7, 0, 1);
-      k.fence.topRail.position.y = 1.06 - kt * 0.9;
+      k.fence.topRail.position.y = 1.35 - kt * 1.15;
       k.fence.topRail.position.z = kt * 0.5;
       k.fence.topRail.rotation.x = kt * 0.5;
     }
