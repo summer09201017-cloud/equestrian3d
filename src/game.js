@@ -82,11 +82,10 @@ export const RIDERS = {
 export const RIDER_SKILLS = {
   gyro: { label: "鋼球", cooldown: 7 },
   johnny: { label: "爪彈", cooldown: 7 }, // Tusk:藍色指甲彈+黃金迴旋(07-16 使用者點名)
-  diego: { label: "恐龍化", cooldown: 9 }, // Scary Monsters:3 秒獸化衝刺,貼近對手=咬落馬
+  diego: { label: "THE WORLD", cooldown: 13 }, // 時停 5 秒:畫面黑白、對手與飛行物全凍結(07-16 使用者點名)
 };
-const DINO_DUR = 3.0; // 恐龍化持續秒數
-const DINO_BOOST = 1.35; // 衝刺倍率
-const DINO_BITE_GAP = 2.2; // 咬擊觸發距離(里程差,公尺)
+const TIMESTOP_DUR = 5.0; // 玩家時停秒數
+const TIMESTOP_AI_DUR = 3.5; // AI 對你時停的秒數(溫柔版,短一點)
 const FALL_DUR = 2.4; // 落馬到爬回馬上的秒數(前 0.45s 摔、後 0.45s 爬回)
 const BALL_SPEED = 26;
 
@@ -402,34 +401,6 @@ function makeRiderCharacter(riderId) {
     dio.position.set(0, 2.315, 0.235);
     dio.rotation.x = -0.42; // 貼著帽前坡
     rider.rig.add(dio);
-    // 恐龍化隱藏件:綠鱗吻部+背棘三根+尾巴(Scary Monsters,獸化時 visible)
-    const dino = new THREE.Group();
-    dino.visible = false;
-    const scaleMat = new THREE.MeshStandardMaterial({ color: 0x3f9a4f, roughness: 0.6, emissive: 0x1a4a20, emissiveIntensity: 0.5 });
-    const snout = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 0.34), scaleMat);
-    snout.position.set(0, 2.08, 0.32);
-    dino.add(snout);
-    const teeth = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.03, 0.3), new THREE.MeshBasicMaterial({ color: 0xf5f5f5 }));
-    teeth.position.set(0, 2.0, 0.33);
-    dino.add(teeth);
-    for (let i = 0; i < 3; i += 1) {
-      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.22, 5), scaleMat);
-      spike.position.set(0, 1.9 - i * 0.28, -0.2);
-      spike.rotation.x = -0.5;
-      dino.add(spike);
-    }
-    const tail = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.7, 6), scaleMat);
-    tail.rotation.x = Math.PI / 2 + 0.5;
-    tail.position.set(0, 1.05, -0.5);
-    dino.add(tail);
-    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffd83c });
-    for (const ex of [-0.09, 0.09]) {
-      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 8), eyeMat);
-      eye.position.set(ex, 2.2, 0.26);
-      dino.add(eye);
-    }
-    rider.rig.add(dino);
-    rider.dino = dino;
   } else {
     // 棕寬簷帽+深帽帶+下顎環鬍+一口金牙的笑(原生嘴關掉,不然變雙嘴)
     rider.smile.visible = false;
@@ -612,8 +583,8 @@ export class EquestrianGame {
     this.aiSkillCd = 9;
     this.meFall = 9;
     this.aiFall = 9;
-    this.meDino = 0;
-    this.aiDino = 0;
+    this.timeStop = 0;
+    this.aiTimeStop = 0;
     this.aiRiderId = "johnny";
 
     this.input = new InputManager();
@@ -1033,6 +1004,7 @@ export class EquestrianGame {
   // ---------- 技能:傑洛的鋼球 ----------
   tryUseSkill() {
     if (this.phase !== "riding" && this.phase !== "jumping") return;
+    if (this.aiTimeStop > 0) return; // 你的時間被停了,動不了
     const skill = RIDER_SKILLS[this.riderId];
     if (!skill) {
       this.message = "這位騎手沒有技能!";
@@ -1056,9 +1028,9 @@ export class EquestrianGame {
     }
     this.skillCd = skill.cooldown;
     if (this.riderId === "diego") {
-      this.meDino = DINO_DUR;
-      if (this.rider.dino) this.rider.dino.visible = true;
-      this.message = "迪亞哥恐龍化——Scary Monsters!貼近對手咬他下馬!";
+      this.timeStop = TIMESTOP_DUR;
+      this.canvas.style.filter = "grayscale(1) contrast(1.08)"; // 時停=世界失色
+      this.message = "迪亞哥:THE WORLD!時間停止 5 秒——只有你能動!";
     } else {
       this.throwSteelBall("me", this.riderId);
       this.message = this.riderId === "johnny" ? "喬尼射出爪彈——黃金迴旋!" : "傑洛擲出鋼球!";
@@ -1115,43 +1087,27 @@ export class EquestrianGame {
     this.aiFall = (this.aiFall ?? 9) + delta;
     if (this.skillCd > 0) this.skillCd = Math.max(0, this.skillCd - delta);
 
-    // 恐龍化(Scary Monsters):計時+綠色殘影+貼近咬落馬
-    const gapNow = this.mode.race ? Math.abs(this.aiDist - this.dist) : 999;
-    if (this.meDino > 0) {
-      this.meDino -= delta;
-      if (Math.random() < delta * 20) {
-        const hp = this.horse.group.position;
-        this.spawnSmokePuff(new THREE.Vector3(hp.x, 1.4 + Math.random(), hp.z), false, 0x4fce5f);
-      }
-      if (gapNow < DINO_BITE_GAP && this.aiFall >= FALL_DUR) {
-        this.aiFall = 0;
-        this.meDino = 0;
-        const other = RIDERS[this.aiRiderId || "johnny"].label;
-        this.message = `咬擊命中!${other} 被撲下馬!`;
-        for (let i = 0; i < 12; i += 1) this.spawnSmokePuff(this.aiHorse.group.position.clone().add(new THREE.Vector3(0, 1.8, 0)), true, 0x4fce5f);
-        this.emitEvent("skill-hit", { from: "me" });
+    // THE WORLD 時停:計時+復原(畫面回彩色);時停期間飛行物/煙霧全凍結(見下)
+    if (this.timeStop > 0) {
+      this.timeStop -= delta;
+      if (this.timeStop <= 0) {
+        this.canvas.style.filter = "";
+        this.message = "時間再次流動。";
         this.pushHud();
       }
-      if (this.meDino <= 0 && this.rider.dino) this.rider.dino.visible = false;
     }
-    if (this.aiDino > 0) {
-      this.aiDino -= delta;
-      if (Math.random() < delta * 20) {
-        const ap = this.aiHorse.group.position;
-        this.spawnSmokePuff(new THREE.Vector3(ap.x, 1.4 + Math.random(), ap.z), false, 0x4fce5f);
-      }
-      if (gapNow < DINO_BITE_GAP && this.meFall >= FALL_DUR) {
-        this.meFall = 0;
-        this.aiDino = 0;
-        this.message = "被恐龍化的迪亞哥撲下馬了!快爬回去!";
-        for (let i = 0; i < 12; i += 1) this.spawnSmokePuff(this.horse.group.position.clone().add(new THREE.Vector3(0, 1.8, 0)), true, 0x4fce5f);
-        this.emitEvent("skill-hit", { from: "ai" });
+    if (this.aiTimeStop > 0) {
+      this.aiTimeStop -= delta;
+      if (this.aiTimeStop <= 0) {
+        this.canvas.style.filter = "";
+        this.message = "時間再次流動——追回來!";
         this.pushHud();
       }
-      if (this.aiDino <= 0 && this.aiRider.dino) this.aiRider.dino.visible = false;
     }
+    const frozenWorld = this.timeStop > 0 || this.aiTimeStop > 0; // 時停中:投擲物懸停在半空
 
     for (const b of this.balls) {
+      if (frozenWorld) break; // THE WORLD:子彈/鋼球凍結在半空
       b.t += delta;
       const targetHorse = b.from === "me" ? this.aiHorse : this.horse;
       if (!targetHorse) {
@@ -1202,6 +1158,7 @@ export class EquestrianGame {
     });
 
     for (const p of this.smokePuffs) {
+      if (frozenWorld) break;
       p.t += delta;
       p.mesh.scale.setScalar(1 + p.t * 3.2);
       p.mesh.material.opacity = Math.max(0, 0.75 * (1 - p.t / 0.6));
@@ -1283,10 +1240,9 @@ export class EquestrianGame {
     this.aiSkillCd = 6 + Math.random() * 4;
     this.meFall = 9;
     this.aiFall = 9;
-    this.meDino = 0;
-    this.aiDino = 0;
-    if (this.rider && this.rider.dino) this.rider.dino.visible = false;
-    if (this.aiRider && this.aiRider.dino) this.aiRider.dino.visible = false;
+    this.timeStop = 0;
+    this.aiTimeStop = 0;
+    this.canvas.style.filter = "";
     if (this.aiHorse) this.aiHorse.group.visible = !!this.mode.race;
     this.placeHorse();
     // 起跑鏡頭直接切到馬後方(joash 教訓:lerp 穿場=整幀糊掉)
@@ -1303,6 +1259,7 @@ export class EquestrianGame {
   // 出發/起跳共用(空白鍵/點畫面/觸控跳鍵)
   jump() {
     if (this.overlay.visible) return;
+    if (this.aiTimeStop > 0) return; // 你的時間被停了
     if ((this.meFall ?? 9) < FALL_DUR) return; // 人還在地上,先爬回馬再說
     if (this.phase === "gate") {
       this.phase = "riding";
@@ -1535,12 +1492,13 @@ export class EquestrianGame {
       let target = preset.baseSpeed + (boosting ? preset.boost : 0) - (slowing ? 2.2 : 0);
       this.knockSlowT = (this.knockSlowT ?? 9) + delta;
       if (this.mode.race && this.knockSlowT < 1.4) target *= 0.5; // 碰桿踉蹌
-      if (this.meDino > 0) target *= DINO_BOOST; // 恐龍化衝刺
+      const meFrozen = this.aiTimeStop > 0; // 被 THE WORLD 停住
+      if (meFrozen) target = 0;
       // 技能鍵(K/E/觸控「鋼球」)
       if (this.input.consumePress("action")) this.tryUseSkill();
-      const meDown = this.meFall < FALL_DUR; // 被鋼球打下馬:馬停下等騎手爬回
+      const meDown = this.meFall < FALL_DUR || meFrozen; // 落馬或被 THE WORLD 停住:馬停下
       if (meDown) target = 0;
-      this.speed += (Math.max(meDown ? 0 : 3, target) - this.speed) * Math.min(1, delta * (meDown ? 4 : 1.8));
+      this.speed += (Math.max(meDown ? 0 : 3, target) - this.speed) * Math.min(1, delta * (meDown ? 6 : 1.8));
       this.dist += this.speed * delta;
       this.gallopT += delta * (this.speed / 8);
 
@@ -1566,7 +1524,7 @@ export class EquestrianGame {
       }
 
       // —— 競速 AI(同賽道外線):控速+起跳品質依難度,碰桿一樣踉蹌 ——
-      if (this.mode.race && this.phase !== "ended") {
+      if (this.mode.race && this.phase !== "ended" && this.timeStop <= 0) { // 玩家 THE WORLD 期間 AI 整段凍結
         const ai = RACE_AI[this.difficulty];
         this.aiKnockSlowT += delta;
         const aiBoosting = Math.sin(this.time * 0.7 + 1.3) * 0.5 + 0.5 < ai.boostRatio;
@@ -1585,9 +1543,9 @@ export class EquestrianGame {
           if (this.aiSkillCd <= 0 && gap > 3 && gap < 26 && this.meFall >= FALL_DUR + 1) {
             this.aiSkillCd = 14 + Math.random() * 5;
             if (aiKind === "diego") {
-              this.aiDino = DINO_DUR;
-              if (this.aiRider.dino) this.aiRider.dino.visible = true;
-              this.message = "對面的迪亞哥恐龍化了——別讓他貼近!";
+              this.aiTimeStop = TIMESTOP_AI_DUR;
+              this.canvas.style.filter = "grayscale(1) contrast(1.08)";
+              this.message = "對面的迪亞哥:THE WORLD!你被時停了!";
             } else {
               this.throwSteelBall("ai", aiKind);
               this.message = aiKind === "johnny" ? "對面的喬尼射出爪彈——小心!" : "對面的傑洛擲出鋼球——小心!";
@@ -1595,7 +1553,7 @@ export class EquestrianGame {
             this.pushHud();
           }
         }
-        if (this.aiDino > 0) aiTarget *= DINO_BOOST; // AI 恐龍化衝刺
+
         if (this.aiJumpAnim) {
           this.aiJumpAnim.t += delta / this.aiJumpAnim.dur;
           if (this.aiJumpAnim.t >= 1) {
