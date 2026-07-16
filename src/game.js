@@ -385,6 +385,35 @@ function makeRiderCharacter(riderId) {
     tip.rotation.y = Math.PI / 4;
     tip.position.set(0, 1.47, 0.171);
     rider.rig.add(tip);
+    // 雙向橫條黃條紋(07-16 使用者點名):兩組斜向條紋交叉成 X,前後都看得到
+    const stripeMat = new THREE.MeshStandardMaterial({ color: 0xf6d743, roughness: 0.65 });
+    for (const tilt of [0.32, -0.32]) {
+      for (const sy of [1.24, 1.46, 1.68]) {
+        const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.065, 0.345), stripeMat);
+        stripe.position.set(0, sy, 0);
+        stripe.rotation.z = tilt;
+        rider.rig.add(stripe);
+      }
+    }
+    // 帽上黃色立體 DIO 標字(07-16 使用者點名):D=豎桿+半圓環、I=豎桿、O=圓環,貼帽前坡
+    const dioMat = new THREE.MeshStandardMaterial({ color: 0xf6d743, roughness: 0.4, emissive: 0x6a5a10, emissiveIntensity: 0.5 });
+    const dio = new THREE.Group();
+    const dBar = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.11, 0.03), dioMat);
+    dBar.position.set(-0.105, 0, 0);
+    dio.add(dBar);
+    const dArc = new THREE.Mesh(new THREE.TorusGeometry(0.042, 0.015, 8, 12, Math.PI), dioMat);
+    dArc.rotation.z = -Math.PI / 2; // 右半圓
+    dArc.position.set(-0.098, 0, 0);
+    dio.add(dArc);
+    const iBar = new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.11, 0.03), dioMat);
+    iBar.position.set(0, 0, 0);
+    dio.add(iBar);
+    const oRing = new THREE.Mesh(new THREE.TorusGeometry(0.044, 0.016, 8, 14), dioMat);
+    oRing.position.set(0.098, 0, 0);
+    dio.add(oRing);
+    dio.position.set(0, 2.315, 0.235);
+    dio.rotation.x = -0.42; // 貼著帽前坡
+    rider.rig.add(dio);
     // 恐龍化隱藏件:綠鱗吻部+背棘三根+尾巴(Scary Monsters,獸化時 visible)
     const dino = new THREE.Group();
     dino.visible = false;
