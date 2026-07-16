@@ -373,23 +373,11 @@ function makeRiderCharacter(riderId) {
     const brim = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.035, 0.2), capMat);
     brim.position.set(0, 2.2, 0.3);
     rider.rig.add(brim);
-    // 胸前金心(兩球+倒三角)
-    const heartMat = new THREE.MeshBasicMaterial({ color: 0xd8a83c });
-    for (const hx of [-0.045, 0.045]) {
-      const lobe = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), heartMat);
-      lobe.position.set(hx, 1.56, 0.171);
-      rider.rig.add(lobe);
-    }
-    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.085, 0.14, 4), heartMat);
-    tip.rotation.x = Math.PI;
-    tip.rotation.y = Math.PI / 4;
-    tip.position.set(0, 1.47, 0.171);
-    rider.rig.add(tip);
     // 雙向橫條黃條紋(07-16 使用者點名):兩組斜向條紋交叉成 X,前後都看得到
     const stripeMat = new THREE.MeshStandardMaterial({ color: 0xf6d743, roughness: 0.65 });
     for (const tilt of [0.32, -0.32]) {
-      for (const sy of [1.24, 1.46, 1.68]) {
-        const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.065, 0.345), stripeMat);
+      for (const sy of [1.18, 1.36, 1.54, 1.72]) {
+        const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.03, 0.345), stripeMat);
         stripe.position.set(0, sy, 0);
         stripe.rotation.z = tilt;
         rider.rig.add(stripe);
