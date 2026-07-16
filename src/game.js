@@ -106,6 +106,7 @@ const RACE_LANE = 0.95; // 競速:兩馬各偏路徑中線一側
 export const STAGES = {
   meadow: { label: "第一賽段・草原", len: 900, desert: false, days: false },
   desert: { label: "第二賽段・沙漠", len: 1800, desert: true, days: true },
+  snow: { label: "第三賽段・雪山", len: 1400, desert: false, snow: true, days: false },
 };
 const DAY_SECONDS = 50; // 遊戲內一天=50 現實秒(沙漠賽段以天數計時)
 const TURBO_BOOST = 4.0; // 高速奔跑額外速度(07-16 使用者點名:耗體力條)
@@ -671,6 +672,8 @@ export class EquestrianGame {
     this.aiStamina = 1;
     this.aiTurbo = false;
     this.aiTired = false;
+    this.blizzard = 0; // 暴風雪強度(第三賽段)
+    this.blizzardWarned = false;
 
     this.input = new InputManager();
     this.input.bindTouchButtons(this.touchRoot);
@@ -754,7 +757,7 @@ export class EquestrianGame {
   }
 
   applySkyBase() {
-    const sky = this.stage.desert ? 0xa8d4ec : 0x8fc4e8;
+    const sky = this.stage.snow ? 0xcfd8e4 : this.stage.desert ? 0xa8d4ec : 0x8fc4e8;
     this.scene.background = new THREE.Color(sky);
     this.scene.fog = new THREE.Fog(sky, 260, 1050);
   }
@@ -769,6 +772,39 @@ export class EquestrianGame {
     const d = Math.floor(h / 24) + 1;
     const hh = String(Math.floor(h % 24)).padStart(2, "0");
     return `第${d}天 ${hh}時`;
+  }
+
+  // 暴風雪(第三賽段):常態飄雪;每 ~50 秒一波強陣風(白茫濃霧+雪片橫飛+雙方減速)
+  updateBlizzard(delta) {
+    if (!this.snowFx) return;
+    const gust = clamp((Math.sin(this.time * 0.12) - 0.55) / 0.45, 0, 1);
+    this.blizzard = gust;
+    if (gust > 0.5 && !this.blizzardWarned) {
+      this.blizzardWarned = true;
+      this.message = "暴風雪來了——壓低身子穩住!";
+      this.pushHud();
+    }
+    if (gust < 0.2) this.blizzardWarned = false;
+    // 濃霧收窄視野(白矇天)
+    if (this.scene.fog) {
+      this.scene.fog.near = 260 - 205 * gust;
+      this.scene.fog.far = 1050 - 800 * gust;
+    }
+    // 雪粒子:跟著馬走的 70m 盒;下落+風向橫飄(陣風加倍)
+    const hp = this.horse.group.position;
+    const attr = this.snowFx.pts.geometry.getAttribute("position");
+    const windX = (1.5 + 9 * gust) * delta;
+    for (let i = 0; i < attr.count; i += 1) {
+      attr.array[i * 3 + 1] -= this.snowFx.speeds[i] * (1 + gust * 1.6) * delta;
+      attr.array[i * 3] += windX * (0.6 + (i % 5) * 0.2);
+      if (attr.array[i * 3 + 1] < hp.y - 2) attr.array[i * 3 + 1] = hp.y + 24;
+      if (attr.array[i * 3] > hp.x + 35) attr.array[i * 3] = hp.x - 35;
+      if (attr.array[i * 3] < hp.x - 35) attr.array[i * 3] = hp.x + 35;
+      if (attr.array[i * 3 + 2] > hp.z + 35) attr.array[i * 3 + 2] = hp.z - 35;
+      if (attr.array[i * 3 + 2] < hp.z - 35) attr.array[i * 3 + 2] = hp.z + 35;
+    }
+    attr.needsUpdate = true;
+    this.snowFx.pts.material.opacity = 0.7 + 0.3 * gust;
   }
 
   // 日夜循環:天色/霧色/主光強度照遊戲時刻輪轉
@@ -824,7 +860,12 @@ export class EquestrianGame {
     this.courseLen = this.curve.getLength();
 
     // 高度剖面(u→公尺):草原=平原→高原→陡下坡;沙漠=連綿沙丘
-    this.heightKeys = this.stage.desert
+    this.heightKeys = this.stage.snow
+      ? [
+          [0, 0], [0.08, 4], [0.16, 10], [0.24, 8], [0.34, 18], [0.42, 15],
+          [0.52, 28], [0.6, 24], [0.7, 12], [0.82, 4], [0.92, 0], [1, 0],
+        ]
+      : this.stage.desert
       ? [
           [0, 0], [0.07, 3], [0.14, 1], [0.21, 6], [0.29, 2], [0.37, 8], [0.45, 3],
           [0.54, 13], [0.61, 6], [0.69, 9], [0.77, 3], [0.87, 0], [1, 0],
@@ -869,7 +910,14 @@ export class EquestrianGame {
     const SEG = 340;
     const pos = [], col = [], idx = [];
     const skirtPos = [], skirtIdx = [];
-    const zoneColor = this.stage.desert
+    const zoneColor = this.stage.snow
+      ? (u) => {
+          if (u < 0.3) return [0.92, 0.94, 0.97]; // 新雪
+          if (u < 0.6) return [0.78, 0.85, 0.93]; // 壓實冰路(爬升段)
+          if (u < 0.82) return [0.68, 0.78, 0.9]; // 峰頂藍冰
+          return [0.92, 0.94, 0.97];
+        }
+      : this.stage.desert
       ? (u) => {
           if (u < 0.3) return [0.93, 0.82, 0.58]; // 淺沙
           if (u < 0.55) return [0.88, 0.72, 0.46]; // 金沙丘
@@ -919,7 +967,34 @@ export class EquestrianGame {
     skirtGeo.computeVertexNormals();
     this.scene.add(new THREE.Mesh(skirtGeo, new THREE.MeshStandardMaterial({ color: 0x8a6a4a, roughness: 1, side: THREE.DoubleSide })));
 
-    if (this.stage.desert) {
+    if (this.stage.snow) {
+      // 雪山沿線:掛雪松樹+雪岩交錯(站在路肩上)
+      const pineMat = new THREE.MeshStandardMaterial({ color: 0x2a4d38, roughness: 1 });
+      const snowCapMat = new THREE.MeshStandardMaterial({ color: 0xf2f6fa, roughness: 0.9 });
+      const iceRockMat = new THREE.MeshStandardMaterial({ color: 0xaebfd0, roughness: 0.8 });
+      for (let d = 24; d < this.courseLen; d += 34) {
+        const side = Math.round(d / 34) % 2 === 0 ? 1 : -1;
+        const c = this.posAt(d);
+        const t = this.tangentAt(d);
+        const nl = Math.hypot(t.z, t.x) || 1;
+        const ox = (-t.z / nl) * 4.6 * side, oz = (t.x / nl) * 4.6 * side;
+        if (Math.round(d / 34) % 4 === 3) {
+          const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.85), iceRockMat);
+          rock.position.set(c.x + ox, c.y + 0.35, c.z + oz);
+          this.scene.add(rock);
+        } else {
+          const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 1.4, 6), new THREE.MeshStandardMaterial({ color: 0x4a3424, roughness: 0.9 }));
+          trunk.position.set(c.x + ox, c.y + 0.7, c.z + oz);
+          this.scene.add(trunk);
+          const pine = new THREE.Mesh(new THREE.ConeGeometry(1.5, 3.4, 7), pineMat);
+          pine.position.set(c.x + ox, c.y + 3.0, c.z + oz);
+          this.scene.add(pine);
+          const cap = new THREE.Mesh(new THREE.ConeGeometry(1.0, 1.6, 7), snowCapMat);
+          cap.position.set(c.x + ox, c.y + 4.2, c.z + oz);
+          this.scene.add(cap);
+        }
+      }
+    } else if (this.stage.desert) {
       // 沙漠沿線:仙人掌+岩石交錯(站在路肩上)
       const cactusMat = new THREE.MeshStandardMaterial({ color: 0x4f8a4a, roughness: 0.85 });
       const rockMat = new THREE.MeshStandardMaterial({ color: 0x9a7d5f, roughness: 1 });
@@ -1037,6 +1112,24 @@ export class EquestrianGame {
     this.scene.add(rim);
     this.keyLight = key;
 
+    this.snowFx = null;
+    if (this.stage.snow) { // 暴風雪:雪粒子盒跟著馬走(常態飄雪+陣風加強)
+      const N = 750;
+      const pos = new Float32Array(N * 3);
+      for (let i = 0; i < N; i += 1) {
+        pos[i * 3] = (Math.random() - 0.5) * 70;
+        pos[i * 3 + 1] = Math.random() * 26;
+        pos[i * 3 + 2] = (Math.random() - 0.5) * 70;
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      const mat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.32, transparent: true, opacity: 0.85, depthWrite: false, fog: false });
+      this.snowFx = { pts: new THREE.Points(geo, mat), speeds: Float32Array.from({ length: N }, () => 4 + Math.random() * 4) };
+      this.scene.add(this.snowFx.pts);
+      this.blizzard = 0;
+      this.blizzardWarned = false;
+    }
+
     this.aurora = null;
     if (this.stage.days) { // 夜間極光(第二賽段):環繞賽道質心
       let cx = 0, cz = 0;
@@ -1053,13 +1146,15 @@ export class EquestrianGame {
       this.scene.add(this.aurora.group);
     }
 
-    const grass = new THREE.Mesh(new THREE.PlaneGeometry(this.stage.len * 2.2, this.stage.len * 2.2), new THREE.MeshStandardMaterial({ color: this.stage.desert ? 0xe3c17f : 0x4f8a44, roughness: 1 }));
+    const grass = new THREE.Mesh(new THREE.PlaneGeometry(this.stage.len * 2.2, this.stage.len * 2.2), new THREE.MeshStandardMaterial({ color: this.stage.snow ? 0xe8eef4 : this.stage.desert ? 0xe3c17f : 0x4f8a44, roughness: 1 }));
     grass.rotation.x = -Math.PI / 2;
     grass.position.y = -0.02;
     this.scene.add(grass);
-    const sand = new THREE.Mesh(new THREE.PlaneGeometry(96, 72), new THREE.MeshStandardMaterial({ color: 0xd9c9a0, roughness: 1 }));
-    sand.rotation.x = -Math.PI / 2;
-    this.scene.add(sand);
+    if (this.stageId === "meadow") {
+      const sand = new THREE.Mesh(new THREE.PlaneGeometry(96, 72), new THREE.MeshStandardMaterial({ color: 0xd9c9a0, roughness: 1 }));
+      sand.rotation.x = -Math.PI / 2;
+      this.scene.add(sand);
+    }
 
     // 場邊白欄(上下兩條)
     const railMat = new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.7 });
@@ -1751,6 +1846,7 @@ export class EquestrianGame {
       this.turboVis = turbo;
       this.knockSlowT = (this.knockSlowT ?? 9) + delta;
       if (this.mode.race && this.knockSlowT < 1.4) target *= 0.5; // 碰桿踉蹌
+      if (this.blizzard > 0) target *= 1 - 0.15 * this.blizzard; // 暴風雪頂風減速
       const meFrozen = this.aiTimeStop > 0; // 被 THE WORLD 停住
       if (meFrozen) target = 0;
       // 技能鍵(K/E/觸控「鋼球」)
@@ -1810,6 +1906,7 @@ export class EquestrianGame {
           this.aiStamina = Math.min(1, this.aiStamina + TURBO_REGEN * delta);
         }
         if (this.aiStamina <= 0 && !this.aiTired) this.aiTired = true;
+        if (this.blizzard > 0) aiTarget *= 1 - 0.15 * this.blizzard; // 暴風雪對 AI 同罰
         const aiDown = this.aiFall < FALL_DUR;
         if (aiDown) aiTarget = 0;
         this.aiSpeed += (Math.max(aiDown ? 0 : 3, aiTarget) - this.aiSpeed) * Math.min(1, delta * (aiDown ? 4 : 1.8));
@@ -1892,6 +1989,7 @@ export class EquestrianGame {
     this.handleKeys();
     this.updateHorsePose();
     this.placeHorse();
+    this.updateBlizzard(delta);
     this.updateSky();
     this.updateCamera(delta);
 
