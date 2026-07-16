@@ -102,12 +102,12 @@ const JUMP_SPAN = 4.4; // 一跳跨越的路徑長(m)
 const APPROACH_M = 14; // 進入「備跳」提示的距離
 const RACE_LANE = 0.95; // 競速:兩馬各偏路徑中線一側
 // AI 競速對手(依難度):skill=起跳品質期望、boostRatio=全速時間比
-const RACE_AI = {
-  kids: { skill: 0.35, boostRatio: 0.15 },
-  child: { skill: 0.48, boostRatio: 0.3 },
-  easy: { skill: 0.58, boostRatio: 0.45 },
-  normal: { skill: 0.7, boostRatio: 0.6 },
-  hard: { skill: 0.82, boostRatio: 0.78 },
+const RACE_AI = { // 07-16 使用者點名 AI 要更快:全檔 boostRatio 上調
+  kids: { skill: 0.35, boostRatio: 0.25 },
+  child: { skill: 0.48, boostRatio: 0.45 },
+  easy: { skill: 0.58, boostRatio: 0.62 },
+  normal: { skill: 0.7, boostRatio: 0.78 },
+  hard: { skill: 0.82, boostRatio: 0.92 },
 };
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
