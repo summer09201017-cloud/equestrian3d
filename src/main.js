@@ -235,7 +235,7 @@ game.onEvent = handleGameEvent;
 game.onHudUpdate = (state) => {
   ui.faultsLabel.textContent = String(state.faults);
   ui.clearsLabel.textContent = String(state.clears);
-  ui.modeCode.textContent = ({ 標準賽: "標準", 決勝圈: "決勝", 雙騎競速: "競速", 練習場: "練習" })[state.modeLabel] || state.modeLabel;
+  ui.modeCode.textContent = ({ 標準賽: "標準", 決勝圈: "決勝", 雙騎競速: "競速", 自由奔跑賽: "奔跑", 練習場: "練習" })[state.modeLabel] || state.modeLabel;
   ui.fenceLabel.textContent = state.endless ? `${state.fenceIdx}/${state.fenceCount}·圈${state.lap}` : `${state.fenceIdx}/${state.fenceCount}`;
   ui.timeLabel.textContent = state.timeText;
   ui.lastFenceLabel.textContent =

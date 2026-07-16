@@ -127,7 +127,7 @@
           <p class="mini-label">操作</p>
           <p>出發 / 起跳: 點畫面或空白鍵</p>
           <p>加速: 按住 W / ↑ / 加速鈕</p>
-          <p>收步: 按住 S / ↓</p>
+          <p>收步: 按住 S / ↓｜跑位(自由奔跑賽): A D / ← →</p>
           <p>技能(競速): K / E / 技能鈕——傑洛鋼球・喬尼爪彈・迪亞哥 THE WORLD(時停)</p>
           <p>視角切換: V｜暫停: Esc / P</p>
         </div>
@@ -137,6 +137,8 @@
         <div class="dpad">
           <button data-action="up" aria-label="加速">▲ 加速</button>
           <button data-action="down" aria-label="收步">▼ 收步</button>
+          <button data-action="left" aria-label="左跑位">◀</button>
+          <button data-action="right" aria-label="右跑位">▶</button>
         </div>
         <div class="action-pad">
           <button data-action="shoot" class="shoot">起跳</button>
@@ -183,6 +185,10 @@
                 <button class="mode-card" data-mode="race">
                   <strong>雙騎競速</strong>
                   <span>跟 AI 一人一馬,先衝線的贏!</span>
+                </button>
+                <button class="mode-card" data-mode="sprint">
+                  <strong>自由奔跑賽</strong>
+                  <span>零欄架 900m,自由跑位拼純速度!</span>
                 </button>
                 <button class="mode-card" data-mode="practice">
                   <strong>練習場</strong>

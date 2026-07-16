@@ -47,6 +47,13 @@ export const GAME_MODES = {
     description: "跟 AI 藍騎士一人一馬同場飆——碰桿會踉蹌減速,先衝過終點的贏!",
     goal: "先到終點者勝",
   },
+  sprint: {
+    label: "自由奔跑賽",
+    race: true,
+    sprint: true,
+    description: "沒有欄架——900 公尺地形全開放!左右自由跑位、按住加速衝,跟 AI 拼純速度,先衝線的贏!",
+    goal: "先跑完 900m 者勝",
+  },
   practice: {
     label: "練習場",
     endless: true,
@@ -586,6 +593,8 @@ export class EquestrianGame {
     this.timeStop = 0;
     this.aiTimeStop = 0;
     this.aiRiderId = "johnny";
+    this.playerLane = -RACE_LANE; // 自由奔跑賽:左右鍵自由跑位(±3.2m)
+    this.steerVis = 0;
 
     this.input = new InputManager();
     this.input.bindTouchButtons(this.touchRoot);
@@ -779,7 +788,7 @@ export class EquestrianGame {
     this.fenceGroup = new THREE.Group();
     this.fences = [];
     const preset = DIFFICULTY_PRESETS[this.difficulty];
-    const n = (this.mode.jumpoff ? Math.max(5, preset.fences - 2) : preset.fences) * 2; // 900m 長賽道:欄門加倍(~每 50m 一道)
+    const n = this.mode.sprint ? 0 : (this.mode.jumpoff ? Math.max(5, preset.fences - 2) : preset.fences) * 2; // 900m:欄門加倍;自由奔跑賽=零欄架
     const woodMat = new THREE.MeshStandardMaterial({ color: 0xe9e2d2, roughness: 0.8 });
     const railColors = [0xd8433c, 0x3f7be0, 0xf6d743, 0x4fae6a];
     for (let i = 0; i < n; i += 1) {
@@ -931,7 +940,10 @@ export class EquestrianGame {
     const p = this.posAt(this.dist);
     const t = this.tangentAt(this.dist);
     let ox = 0, oz = 0;
-    if (this.mode.race) { // 我方靠內線,AI 外線
+    if (this.mode.sprint) { // 自由奔跑:玩家自由跑位
+      ox = -t.z * this.playerLane;
+      oz = t.x * this.playerLane;
+    } else if (this.mode.race) { // 我方靠內線,AI 外線
       ox = -t.z * RACE_LANE;
       oz = t.x * RACE_LANE;
     }
@@ -939,6 +951,7 @@ export class EquestrianGame {
     this.horse.group.rotation.order = "YXZ"; // 先 yaw 再俯仰(貼片鐵則同款)
     this.horse.group.rotation.y = Math.atan2(t.x, t.z);
     this.horse.group.rotation.x = this.slopePitch(this.dist) * 0.8; // 下坡鼻朝下
+    this.horse.group.rotation.z = -(this.steerVis || 0) * 0.12; // 跑位側傾
     if (this.mode.race && this.aiHorse && this.aiHorse.group.visible) {
       const ap = this.posAt(this.aiDist);
       const at = this.tangentAt(this.aiDist);
@@ -1243,6 +1256,8 @@ export class EquestrianGame {
     this.timeStop = 0;
     this.aiTimeStop = 0;
     this.canvas.style.filter = "";
+    this.playerLane = -RACE_LANE;
+    this.steerVis = 0;
     if (this.aiHorse) this.aiHorse.group.visible = !!this.mode.race;
     this.placeHorse();
     // 起跑鏡頭直接切到馬後方(joash 教訓:lerp 穿場=整幀糊掉)
@@ -1496,6 +1511,13 @@ export class EquestrianGame {
       if (meFrozen) target = 0;
       // 技能鍵(K/E/觸控「鋼球」)
       if (this.input.consumePress("action")) this.tryUseSkill();
+      if (this.mode.sprint && !meFrozen) { // 自由奔跑:左右鍵橫移(A/D 或 ←→)
+        const steer = (this.input.isDown("right") ? 1 : 0) - (this.input.isDown("left") ? 1 : 0);
+        this.playerLane = clamp(this.playerLane + steer * 5 * delta, -3.2, 3.2);
+        this.steerVis = steer;
+      } else {
+        this.steerVis = 0;
+      }
       const meDown = this.meFall < FALL_DUR || meFrozen; // 落馬或被 THE WORLD 停住:馬停下
       if (meDown) target = 0;
       this.speed += (Math.max(meDown ? 0 : 3, target) - this.speed) * Math.min(1, delta * (meDown ? 6 : 1.8));
