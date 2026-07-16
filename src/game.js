@@ -670,6 +670,7 @@ export class EquestrianGame {
     this.tired = false; // 見底後要回到 25% 才能再衝(遲滯)
     this.aiStamina = 1;
     this.aiTurbo = false;
+    this.aiTired = false;
 
     this.input = new InputManager();
     this.input.bindTouchButtons(this.touchRoot);
@@ -1486,6 +1487,7 @@ export class EquestrianGame {
     this.tired = false;
     this.aiStamina = 1;
     this.aiTurbo = false;
+    this.aiTired = false;
     if (this.aiHorse) this.aiHorse.group.visible = !!this.mode.race;
     this.placeHorse();
     // 起跑鏡頭直接切到馬後方(joash 教訓:lerp 穿場=整幀糊掉)
@@ -1791,18 +1793,23 @@ export class EquestrianGame {
       if (this.mode.race && this.phase !== "ended" && this.timeStop <= 0) { // 玩家 THE WORLD 期間 AI 整段凍結
         const ai = RACE_AI[this.difficulty];
         this.aiKnockSlowT += delta;
-        const aiBoosting = Math.sin(this.time * 0.7 + 1.3) * 0.5 + 0.5 < ai.boostRatio;
+        // AI 體力統一模型(07-16 修:原本加速免費=無限快跑):
+        // 加速也燒體力(0.08/s)、衝刺更兇(0.22/s);見底=只剩基礎速慢跑,回到 30% 才能再快
+        if (this.aiTired && this.aiStamina > 0.3) this.aiTired = false;
+        const aiBoosting = !this.aiTired && Math.sin(this.time * 0.7 + 1.3) * 0.5 + 0.5 < ai.boostRatio;
         let aiTarget = preset.baseSpeed + (aiBoosting ? preset.boost : 0);
         if (this.aiKnockSlowT < 1.4) aiTarget *= 0.5;
-        // AI 高速奔跑:落後 >5m 且體力 >50% 就開衝;體力見底或反超就收
-        if (!this.aiTurbo && this.aiDist < this.dist - 5 && this.aiStamina > 0.5) this.aiTurbo = true;
-        if (this.aiTurbo && (this.aiStamina <= 0.05 || this.aiDist > this.dist + 2)) this.aiTurbo = false;
+        if (!this.aiTurbo && !this.aiTired && this.aiDist < this.dist - 5 && this.aiStamina > 0.5) this.aiTurbo = true;
+        if (this.aiTurbo && (this.aiTired || this.aiStamina <= 0.05 || this.aiDist > this.dist + 2)) this.aiTurbo = false;
         if (this.aiTurbo) {
           aiTarget = preset.baseSpeed + preset.boost + TURBO_BOOST * 0.9;
           this.aiStamina = Math.max(0, this.aiStamina - TURBO_DRAIN * delta);
+        } else if (aiBoosting) {
+          this.aiStamina = Math.max(0, this.aiStamina - 0.08 * delta);
         } else {
           this.aiStamina = Math.min(1, this.aiStamina + TURBO_REGEN * delta);
         }
+        if (this.aiStamina <= 0 && !this.aiTired) this.aiTired = true;
         const aiDown = this.aiFall < FALL_DUR;
         if (aiDown) aiTarget = 0;
         this.aiSpeed += (Math.max(aiDown ? 0 : 3, aiTarget) - this.aiSpeed) * Math.min(1, delta * (aiDown ? 4 : 1.8));
