@@ -108,6 +108,9 @@ export const STAGES = {
   desert: { label: "第二賽段・沙漠", len: 1800, desert: true, days: true },
 };
 const DAY_SECONDS = 50; // 遊戲內一天=50 現實秒(沙漠賽段以天數計時)
+const TURBO_BOOST = 4.0; // 高速奔跑額外速度(07-16 使用者點名:耗體力條)
+const TURBO_DRAIN = 0.22; // 體力消耗/秒(全滿可衝 ~4.5 秒)
+const TURBO_REGEN = 0.1; // 體力回復/秒(不衝刺時)
 const SKY_KEYS = [ // [遊戲時刻, 天色, 光強] 日夜循環(夜=深藍,07-16 使用者點名)
   [0, 0x0a2050, 0.35], [5, 0x0a2050, 0.35], [6.5, 0xf0955f, 1.1],
   [9, 0xa8d4ec, 1.9], [16, 0xa8d4ec, 1.9], [18.5, 0xf0854f, 1.0],
@@ -663,6 +666,10 @@ export class EquestrianGame {
     this.aiRiderId = "johnny";
     this.playerLane = -RACE_LANE; // 自由奔跑賽:左右鍵自由跑位(±3.2m)
     this.steerVis = 0;
+    this.stamina = 1; // 體力條(高速奔跑消耗)
+    this.tired = false; // 見底後要回到 25% 才能再衝(遲滯)
+    this.aiStamina = 1;
+    this.aiTurbo = false;
 
     this.input = new InputManager();
     this.input.bindTouchButtons(this.touchRoot);
@@ -1475,6 +1482,10 @@ export class EquestrianGame {
     this.canvas.style.filter = "";
     this.playerLane = -RACE_LANE;
     this.steerVis = 0;
+    this.stamina = 1;
+    this.tired = false;
+    this.aiStamina = 1;
+    this.aiTurbo = false;
     if (this.aiHorse) this.aiHorse.group.visible = !!this.mode.race;
     this.placeHorse();
     // 起跑鏡頭直接切到馬後方(joash 教訓:lerp 穿場=整幀糊掉)
@@ -1719,9 +1730,23 @@ export class EquestrianGame {
     if (!paused && (this.phase === "riding" || this.phase === "jumping")) {
       this.elapsed += delta;
       const preset = DIFFICULTY_PRESETS[this.difficulty];
-      const boosting = this.input.isDown("up") || this.input.isDown("sprint");
+      const boosting = this.input.isDown("up");
       const slowing = this.input.isDown("down");
       let target = preset.baseSpeed + (boosting ? preset.boost : 0) - (slowing ? 2.2 : 0);
+      // 高速奔跑(Shift/⚡):最高速再+4,但燒體力;見底要回到 25% 才能再衝
+      if (this.tired && this.stamina > 0.25) this.tired = false;
+      const turbo = this.input.isDown("sprint") && !this.tired && this.stamina > 0;
+      if (turbo) {
+        target = preset.baseSpeed + preset.boost + TURBO_BOOST - (slowing ? 2.2 : 0);
+        this.stamina = Math.max(0, this.stamina - TURBO_DRAIN * delta);
+        if (this.stamina <= 0) {
+          this.tired = true;
+          this.message = "馬兒喘了——體力見底,收一收等牠回氣!";
+        }
+      } else {
+        this.stamina = Math.min(1, this.stamina + TURBO_REGEN * delta);
+      }
+      this.turboVis = turbo;
       this.knockSlowT = (this.knockSlowT ?? 9) + delta;
       if (this.mode.race && this.knockSlowT < 1.4) target *= 0.5; // 碰桿踉蹌
       const meFrozen = this.aiTimeStop > 0; // 被 THE WORLD 停住
@@ -1769,6 +1794,15 @@ export class EquestrianGame {
         const aiBoosting = Math.sin(this.time * 0.7 + 1.3) * 0.5 + 0.5 < ai.boostRatio;
         let aiTarget = preset.baseSpeed + (aiBoosting ? preset.boost : 0);
         if (this.aiKnockSlowT < 1.4) aiTarget *= 0.5;
+        // AI 高速奔跑:落後 >5m 且體力 >50% 就開衝;體力見底或反超就收
+        if (!this.aiTurbo && this.aiDist < this.dist - 5 && this.aiStamina > 0.5) this.aiTurbo = true;
+        if (this.aiTurbo && (this.aiStamina <= 0.05 || this.aiDist > this.dist + 2)) this.aiTurbo = false;
+        if (this.aiTurbo) {
+          aiTarget = preset.baseSpeed + preset.boost + TURBO_BOOST * 0.9;
+          this.aiStamina = Math.max(0, this.aiStamina - TURBO_DRAIN * delta);
+        } else {
+          this.aiStamina = Math.min(1, this.aiStamina + TURBO_REGEN * delta);
+        }
         const aiDown = this.aiFall < FALL_DUR;
         if (aiDown) aiTarget = 0;
         this.aiSpeed += (Math.max(aiDown ? 0 : 3, aiTarget) - this.aiSpeed) * Math.min(1, delta * (aiDown ? 4 : 1.8));
@@ -2051,6 +2085,8 @@ export class EquestrianGame {
       message: this.message,
       speed01: clamp(this.speed / (preset.baseSpeed + preset.boost), 0, 1),
       speedText: `${(this.speed * 3.6).toFixed(0)} km/h`,
+      stamina01: this.stamina,
+      turbo: !!this.turboVis,
       approach01,
       inWindow,
       nextFenceText: distToFence === null ? "—" : distToFence > 90 ? "衝線!" : `${distToFence.toFixed(0)} m`,

@@ -30,6 +30,8 @@ const ui = {
   pauseButton: document.querySelector("#pauseButton"),
   touchControls: document.querySelector("#touchControls"),
   speedMeterFill: document.querySelector("#speedMeterFill"),
+  staminaFill: document.querySelector("#staminaFill"),
+  staminaValue: document.querySelector("#staminaValue"),
   speedMeterText: document.querySelector("#speedMeterText"),
   approachFill: document.querySelector("#approachFill"),
   approachValue: document.querySelector("#approachValue"),
@@ -259,6 +261,10 @@ game.onHudUpdate = (state) => {
   ui.speedLabel.textContent = state.speedText;
   ui.speedMeterText.textContent = state.speedText;
   setMeterFill(ui.speedMeterFill, state.speed01);
+  if (ui.staminaFill && state.stamina01 !== undefined) {
+    setMeterFill(ui.staminaFill, state.stamina01);
+    ui.staminaValue.textContent = `${Math.round(state.stamina01 * 100)}%${state.turbo ? " ⚡" : ""}`;
+  }
   ui.approachValue.textContent = state.approach01 > 0 ? (state.inWindow ? "綠區!跳!" : "接近中…") : "—";
   setMeterFill(ui.approachFill, state.approach01);
   { // 中下方大時機條(07-14 拍板規格):接近欄架才顯示;進綠區=full 發光
