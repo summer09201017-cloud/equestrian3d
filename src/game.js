@@ -80,6 +80,7 @@ export const RIDERS = {
 // 騎手技能(資料驅動,之後補喬尼的招照這格式加):傑洛=鋼球,雙騎競速限定
 export const RIDER_SKILLS = {
   gyro: { label: "鋼球", cooldown: 7 },
+  johnny: { label: "爪彈", cooldown: 7 }, // Tusk:藍色指甲彈+黃金迴旋(07-16 使用者點名)
 };
 const FALL_DUR = 2.4; // 落馬到爬回馬上的秒數(前 0.45s 摔、後 0.45s 爬回)
 const BALL_SPEED = 26;
@@ -282,6 +283,40 @@ function makeSteelBall() {
   );
   g.add(groove);
   return g;
+}
+
+// 喬尼的爪彈:藍色長彈頭+青光環(高速旋轉=膛線感)
+function makeNailBullet() {
+  const g = new THREE.Group();
+  const core = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.09, 0.34, 4, 8),
+    new THREE.MeshStandardMaterial({ color: 0x2f7fe0, roughness: 0.3, metalness: 0.4, emissive: 0x1a4fa0, emissiveIntensity: 0.8 }),
+  );
+  core.rotation.x = Math.PI / 2; // 彈頭朝 +z
+  g.add(core);
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(0.16, 0.03, 6, 14),
+    new THREE.MeshBasicMaterial({ color: 0x7fd4ff, transparent: true, opacity: 0.9 }),
+  );
+  g.add(ring);
+  return g;
+}
+
+// 黃金迴旋:發射瞬間,馬身環繞一圈金色長方形面板旋轉(07-16 使用者點名的特效)
+function makeGoldenSpin() {
+  const group = new THREE.Group();
+  const mats = [];
+  for (let i = 0; i < 8; i += 1) {
+    const mat = new THREE.MeshBasicMaterial({ color: 0xf2c14e, transparent: true, opacity: 0.9, side: THREE.DoubleSide });
+    mats.push(mat);
+    const panel = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.34), mat);
+    const a = (i / 8) * Math.PI * 2;
+    panel.position.set(Math.cos(a) * 1.45, 1.5 + (i % 2) * 0.45, Math.sin(a) * 1.45);
+    panel.rotation.y = -a + Math.PI / 2; // 面沿切線=繞著馬轉的金框
+    panel.rotation.x = 0.18;
+    group.add(panel);
+  }
+  return { group, mats };
 }
 
 function makeRiderCharacter(riderId) {
@@ -501,6 +536,7 @@ export class EquestrianGame {
     // 技能系統(鋼球):飛行中的球、煙霧粒子、冷卻、雙方落馬計時(>=FALL_DUR=在馬上)
     this.balls = [];
     this.smokePuffs = [];
+    this.spinFx = [];
     this.skillCd = 0;
     this.aiSkillCd = 9;
     this.meFall = 9;
@@ -812,47 +848,66 @@ export class EquestrianGame {
   // ---------- 技能:傑洛的鋼球 ----------
   tryUseSkill() {
     if (this.phase !== "riding" && this.phase !== "jumping") return;
-    if (!RIDER_SKILLS[this.riderId]) {
-      this.message = "這位騎手沒有鋼球——傑洛才會這招!";
+    const skill = RIDER_SKILLS[this.riderId];
+    if (!skill) {
+      this.message = "這位騎手沒有技能!";
       this.pushHud();
       return;
     }
     if (!this.mode.race) {
-      this.message = "鋼球要在「雙騎競速」對決時才派得上用場!";
+      this.message = skill.label + "要在「雙騎競速」對決時才派得上用場!";
       this.pushHud();
       return;
     }
     if (this.skillCd > 0) {
-      this.message = `鋼球回轉中……還要 ${this.skillCd.toFixed(1)} 秒`;
+      this.message = `${skill.label}回轉中……還要 ${this.skillCd.toFixed(1)} 秒`;
       this.pushHud();
       return;
     }
     if (this.aiFall < FALL_DUR + 1) {
-      this.message = "對手還在爬起來——等他上馬再丟!";
+      this.message = "對手還在爬起來——等他上馬再出招!";
       this.pushHud();
       return;
     }
-    this.skillCd = RIDER_SKILLS[this.riderId].cooldown;
-    this.throwSteelBall("me");
-    this.message = "傑洛擲出鋼球!";
+    this.skillCd = skill.cooldown;
+    this.throwSteelBall("me", this.riderId);
+    this.message = this.riderId === "johnny" ? "喬尼射出爪彈——黃金迴旋!" : "傑洛擲出鋼球!";
     this.emitEvent("skill", { who: "me" });
     this.pushHud();
   }
 
-  throwSteelBall(from) {
+  throwSteelBall(from, kind = "gyro") {
     const srcHorse = from === "me" ? this.horse : this.aiHorse;
     if (!srcHorse) return;
-    const mesh = makeSteelBall();
+    const isNail = kind === "johnny";
+    const mesh = isNail ? makeNailBullet() : makeSteelBall();
     const sp = srcHorse.group.position;
     mesh.position.set(sp.x, 2.3, sp.z);
     this.scene.add(mesh);
-    this.balls.push({ mesh, vel: new THREE.Vector3(0, 2.5, 0), t: 0, from, smokeT: 0, dead: false });
+    this.balls.push({
+      mesh,
+      vel: new THREE.Vector3(0, 2.5, 0),
+      t: 0,
+      from,
+      smokeT: 0,
+      dead: false,
+      speed: isNail ? 38 : BALL_SPEED, // 爪彈快、鋼球重
+      trailColor: isNail ? 0x7fd4ff : 0xf2d24a,
+      spinZ: isNail ? 26 : 5, // 爪彈膛線高速迴旋
+    });
+    if (isNail) this.spawnGoldenSpin(srcHorse); // 發射瞬間:馬身黃金長方形迴旋
   }
 
-  spawnSmokePuff(pos, big = false) {
+  spawnGoldenSpin(horse) {
+    const fx = makeGoldenSpin();
+    horse.rig.add(fx.group);
+    this.spinFx.push({ group: fx.group, mats: fx.mats, t: 0, host: horse });
+  }
+
+  spawnSmokePuff(pos, big = false, color = 0xf2d24a) {
     const puff = new THREE.Mesh(
       new THREE.SphereGeometry(big ? 0.22 : 0.13, 8, 8),
-      new THREE.MeshBasicMaterial({ color: 0xf2d24a, transparent: true, opacity: 0.75 }),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.75 }),
     );
     puff.position.copy(pos);
     if (big) {
@@ -879,21 +934,26 @@ export class EquestrianGame {
       const tp = targetHorse.group.position;
       const aim = new THREE.Vector3(tp.x, 1.9, tp.z).sub(b.mesh.position);
       const distTo = aim.length();
-      aim.normalize().multiplyScalar(BALL_SPEED);
-      b.vel.lerp(aim, Math.min(1, delta * 8)); // 微追蹤:鋼球會轉彎咬住目標
+      aim.normalize().multiplyScalar(b.speed || BALL_SPEED);
+      b.vel.lerp(aim, Math.min(1, delta * 8)); // 微追蹤:會轉彎咬住目標
       b.mesh.position.addScaledVector(b.vel, delta);
-      b.mesh.rotation.x += 15 * delta; // 高速自旋
-      b.mesh.rotation.z += 5 * delta;
-      // 黃色煙霧尾跡
+      if (b.spinZ >= 20 && b.vel.lengthSq() > 0.01) {
+        b.mesh.lookAt(b.mesh.position.clone().add(b.vel)); // 爪彈頭朝飛行方向
+        b.mesh.rotation.z += b.t * b.spinZ; // 膛線迴旋
+      } else {
+        b.mesh.rotation.x += 15 * delta; // 鋼球高速自旋
+        b.mesh.rotation.z += 5 * delta;
+      }
+      // 尾跡(鋼球=黃煙、爪彈=青光)
       b.smokeT += delta;
       while (b.smokeT > 0.035) {
         b.smokeT -= 0.035;
-        this.spawnSmokePuff(b.mesh.position);
+        this.spawnSmokePuff(b.mesh.position, false, b.trailColor);
       }
       if (b.t > 2.4) b.dead = true;
       if (distTo < 1.4 && !b.dead) {
         b.dead = true;
-        for (let i = 0; i < 12; i += 1) this.spawnSmokePuff(b.mesh.position, true); // 命中黃煙爆開
+        for (let i = 0; i < 12; i += 1) this.spawnSmokePuff(b.mesh.position, true, b.trailColor); // 命中爆開(同彈色)
         const fallOk = b.from === "me" ? this.aiFall >= FALL_DUR : this.meFall >= FALL_DUR;
         if (fallOk) {
           if (b.from === "me") {
@@ -922,6 +982,21 @@ export class EquestrianGame {
     this.smokePuffs = this.smokePuffs.filter((p) => {
       if (p.t >= 0.6) {
         this.scene.remove(p.mesh);
+        return false;
+      }
+      return true;
+    });
+
+    // 黃金迴旋:繞馬旋轉+末段淡出(1.4s)
+    for (const fx of this.spinFx) {
+      fx.t += delta;
+      fx.group.rotation.y += 7 * delta;
+      const fade = fx.t > 1.0 ? Math.max(0, 1 - (fx.t - 1.0) / 0.4) : 1;
+      for (const m of fx.mats) m.opacity = 0.9 * fade;
+    }
+    this.spinFx = this.spinFx.filter((fx) => {
+      if (fx.t >= 1.4) {
+        fx.host.rig.remove(fx.group);
         return false;
       }
       return true;
@@ -973,8 +1048,10 @@ export class EquestrianGame {
     // 技能重置
     for (const b of this.balls) this.scene.remove(b.mesh);
     for (const p of this.smokePuffs) this.scene.remove(p.mesh);
+    for (const fx of this.spinFx) fx.host.rig.remove(fx.group);
     this.balls = [];
     this.smokePuffs = [];
+    this.spinFx = [];
     this.skillCd = 0;
     this.aiSkillCd = 6 + Math.random() * 4;
     this.meFall = 9;
@@ -1267,14 +1344,15 @@ export class EquestrianGame {
         this.aiSpeed += (Math.max(aiDown ? 0 : 3, aiTarget) - this.aiSpeed) * Math.min(1, delta * (aiDown ? 4 : 1.8));
         this.aiDist += this.aiSpeed * delta;
         this.aiGallopT += delta * (this.aiSpeed / 8);
-        // 對面若是傑洛(玩家選喬尼),AI 也會回敬鋼球——冷卻長、有預告,溫柔版
-        if (this.riderId === "johnny" && !aiDown) {
+        // AI 回敬:對手騎「另一位」,各用各的招——冷卻長、有預告,溫柔版
+        if (!aiDown) {
+          const aiKind = this.riderId === "gyro" ? "johnny" : "gyro";
           this.aiSkillCd -= delta;
           const gap = Math.abs(this.aiDist - this.dist);
           if (this.aiSkillCd <= 0 && gap > 3 && gap < 26 && this.meFall >= FALL_DUR + 1) {
             this.aiSkillCd = 14 + Math.random() * 5;
-            this.throwSteelBall("ai");
-            this.message = "對面的傑洛擲出鋼球——小心!";
+            this.throwSteelBall("ai", aiKind);
+            this.message = aiKind === "johnny" ? "對面的喬尼射出爪彈——小心!" : "對面的傑洛擲出鋼球——小心!";
             this.pushHud();
           }
         }
