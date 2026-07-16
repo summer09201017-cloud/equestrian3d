@@ -75,13 +75,18 @@ export const HORSE_COATS = {
 export const RIDERS = {
   gyro: { label: "傑洛·齊貝林", shirt: 0x7a4db8, pants: 0x4a3a2e, hair: 0xe6c95c }, // 紫上衣+棕帽+黃長髮+兩片綠披風(07-15 使用者拍板)
   johnny: { label: "喬尼·喬斯達", shirt: 0xf2f0ec, pants: 0xf2f0ec, hair: 0xe6c95c }, // 白衣白帽+帽上星星(07-15 使用者拍板)
+  diego: { label: "迪亞哥·布蘭度", shirt: 0x2f8f8a, pants: 0x24404c, hair: 0xe6c95c }, // 青綠騎師服+騎師帽+金心(07-16 新增)
 };
 
 // 騎手技能(資料驅動,之後補喬尼的招照這格式加):傑洛=鋼球,雙騎競速限定
 export const RIDER_SKILLS = {
   gyro: { label: "鋼球", cooldown: 7 },
   johnny: { label: "爪彈", cooldown: 7 }, // Tusk:藍色指甲彈+黃金迴旋(07-16 使用者點名)
+  diego: { label: "恐龍化", cooldown: 9 }, // Scary Monsters:3 秒獸化衝刺,貼近對手=咬落馬
 };
+const DINO_DUR = 3.0; // 恐龍化持續秒數
+const DINO_BOOST = 1.35; // 衝刺倍率
+const DINO_BITE_GAP = 2.2; // 咬擊觸發距離(里程差,公尺)
 const FALL_DUR = 2.4; // 落馬到爬回馬上的秒數(前 0.45s 摔、後 0.45s 爬回)
 const BALL_SPEED = 26;
 
@@ -359,6 +364,55 @@ function makeRiderCharacter(riderId) {
     const chestStar = makeStar(0.1, 0x2f4fa8);
     chestStar.position.set(0, 1.54, 0.171);
     rider.rig.add(chestStar);
+  } else if (riderId === "diego") {
+    // 迪亞哥:青綠騎師帽(圓頂+前簷)+胸前金心+恐龍化隱藏件(獸化時才現形)
+    const capMat = new THREE.MeshStandardMaterial({ color: 0x2f8f8a, roughness: 0.6 });
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.268, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), capMat);
+    cap.position.y = 2.2;
+    rider.rig.add(cap);
+    const brim = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.035, 0.2), capMat);
+    brim.position.set(0, 2.2, 0.3);
+    rider.rig.add(brim);
+    // 胸前金心(兩球+倒三角)
+    const heartMat = new THREE.MeshBasicMaterial({ color: 0xd8a83c });
+    for (const hx of [-0.045, 0.045]) {
+      const lobe = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), heartMat);
+      lobe.position.set(hx, 1.56, 0.171);
+      rider.rig.add(lobe);
+    }
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.085, 0.14, 4), heartMat);
+    tip.rotation.x = Math.PI;
+    tip.rotation.y = Math.PI / 4;
+    tip.position.set(0, 1.47, 0.171);
+    rider.rig.add(tip);
+    // 恐龍化隱藏件:綠鱗吻部+背棘三根+尾巴(Scary Monsters,獸化時 visible)
+    const dino = new THREE.Group();
+    dino.visible = false;
+    const scaleMat = new THREE.MeshStandardMaterial({ color: 0x3f9a4f, roughness: 0.6, emissive: 0x1a4a20, emissiveIntensity: 0.5 });
+    const snout = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 0.34), scaleMat);
+    snout.position.set(0, 2.08, 0.32);
+    dino.add(snout);
+    const teeth = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.03, 0.3), new THREE.MeshBasicMaterial({ color: 0xf5f5f5 }));
+    teeth.position.set(0, 2.0, 0.33);
+    dino.add(teeth);
+    for (let i = 0; i < 3; i += 1) {
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.22, 5), scaleMat);
+      spike.position.set(0, 1.9 - i * 0.28, -0.2);
+      spike.rotation.x = -0.5;
+      dino.add(spike);
+    }
+    const tail = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.7, 6), scaleMat);
+    tail.rotation.x = Math.PI / 2 + 0.5;
+    tail.position.set(0, 1.05, -0.5);
+    dino.add(tail);
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffd83c });
+    for (const ex of [-0.09, 0.09]) {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 8), eyeMat);
+      eye.position.set(ex, 2.2, 0.26);
+      dino.add(eye);
+    }
+    rider.rig.add(dino);
+    rider.dino = dino;
   } else {
     // 棕寬簷帽+深帽帶+下顎環鬍+一口金牙的笑(原生嘴關掉,不然變雙嘴)
     rider.smile.visible = false;
@@ -541,6 +595,9 @@ export class EquestrianGame {
     this.aiSkillCd = 9;
     this.meFall = 9;
     this.aiFall = 9;
+    this.meDino = 0;
+    this.aiDino = 0;
+    this.aiRiderId = "johnny";
 
     this.input = new InputManager();
     this.input.bindTouchButtons(this.touchRoot);
@@ -942,7 +999,9 @@ export class EquestrianGame {
     this.horse.rig.add(this.rider.group);
     if (this.aiHorse) {
       if (this.aiRider) this.aiHorse.rig.remove(this.aiRider.group);
-      this.aiRider = makeRiderCharacter(this.riderId === "gyro" ? "johnny" : "gyro");
+      const pool = Object.keys(RIDERS).filter((k) => k !== this.riderId);
+      this.aiRiderId = pool[Math.floor(Math.random() * pool.length)]; // 對手隨機騎另外兩位之一
+      this.aiRider = makeRiderCharacter(this.aiRiderId);
       poseRiderOnSaddle(this.aiRider);
       this.aiHorse.rig.add(this.aiRider.group);
     }
@@ -979,8 +1038,14 @@ export class EquestrianGame {
       return;
     }
     this.skillCd = skill.cooldown;
-    this.throwSteelBall("me", this.riderId);
-    this.message = this.riderId === "johnny" ? "喬尼射出爪彈——黃金迴旋!" : "傑洛擲出鋼球!";
+    if (this.riderId === "diego") {
+      this.meDino = DINO_DUR;
+      if (this.rider.dino) this.rider.dino.visible = true;
+      this.message = "迪亞哥恐龍化——Scary Monsters!貼近對手咬他下馬!";
+    } else {
+      this.throwSteelBall("me", this.riderId);
+      this.message = this.riderId === "johnny" ? "喬尼射出爪彈——黃金迴旋!" : "傑洛擲出鋼球!";
+    }
     this.emitEvent("skill", { who: "me" });
     this.pushHud();
   }
@@ -1032,6 +1097,42 @@ export class EquestrianGame {
     this.meFall = (this.meFall ?? 9) + delta;
     this.aiFall = (this.aiFall ?? 9) + delta;
     if (this.skillCd > 0) this.skillCd = Math.max(0, this.skillCd - delta);
+
+    // 恐龍化(Scary Monsters):計時+綠色殘影+貼近咬落馬
+    const gapNow = this.mode.race ? Math.abs(this.aiDist - this.dist) : 999;
+    if (this.meDino > 0) {
+      this.meDino -= delta;
+      if (Math.random() < delta * 20) {
+        const hp = this.horse.group.position;
+        this.spawnSmokePuff(new THREE.Vector3(hp.x, 1.4 + Math.random(), hp.z), false, 0x4fce5f);
+      }
+      if (gapNow < DINO_BITE_GAP && this.aiFall >= FALL_DUR) {
+        this.aiFall = 0;
+        this.meDino = 0;
+        const other = RIDERS[this.aiRiderId || "johnny"].label;
+        this.message = `咬擊命中!${other} 被撲下馬!`;
+        for (let i = 0; i < 12; i += 1) this.spawnSmokePuff(this.aiHorse.group.position.clone().add(new THREE.Vector3(0, 1.8, 0)), true, 0x4fce5f);
+        this.emitEvent("skill-hit", { from: "me" });
+        this.pushHud();
+      }
+      if (this.meDino <= 0 && this.rider.dino) this.rider.dino.visible = false;
+    }
+    if (this.aiDino > 0) {
+      this.aiDino -= delta;
+      if (Math.random() < delta * 20) {
+        const ap = this.aiHorse.group.position;
+        this.spawnSmokePuff(new THREE.Vector3(ap.x, 1.4 + Math.random(), ap.z), false, 0x4fce5f);
+      }
+      if (gapNow < DINO_BITE_GAP && this.meFall >= FALL_DUR) {
+        this.meFall = 0;
+        this.aiDino = 0;
+        this.message = "被恐龍化的迪亞哥撲下馬了!快爬回去!";
+        for (let i = 0; i < 12; i += 1) this.spawnSmokePuff(this.horse.group.position.clone().add(new THREE.Vector3(0, 1.8, 0)), true, 0x4fce5f);
+        this.emitEvent("skill-hit", { from: "ai" });
+        this.pushHud();
+      }
+      if (this.aiDino <= 0 && this.aiRider.dino) this.aiRider.dino.visible = false;
+    }
 
     for (const b of this.balls) {
       b.t += delta;
@@ -1165,6 +1266,10 @@ export class EquestrianGame {
     this.aiSkillCd = 6 + Math.random() * 4;
     this.meFall = 9;
     this.aiFall = 9;
+    this.meDino = 0;
+    this.aiDino = 0;
+    if (this.rider && this.rider.dino) this.rider.dino.visible = false;
+    if (this.aiRider && this.aiRider.dino) this.aiRider.dino.visible = false;
     if (this.aiHorse) this.aiHorse.group.visible = !!this.mode.race;
     this.placeHorse();
     // 起跑鏡頭直接切到馬後方(joash 教訓:lerp 穿場=整幀糊掉)
@@ -1413,6 +1518,7 @@ export class EquestrianGame {
       let target = preset.baseSpeed + (boosting ? preset.boost : 0) - (slowing ? 2.2 : 0);
       this.knockSlowT = (this.knockSlowT ?? 9) + delta;
       if (this.mode.race && this.knockSlowT < 1.4) target *= 0.5; // 碰桿踉蹌
+      if (this.meDino > 0) target *= DINO_BOOST; // 恐龍化衝刺
       // 技能鍵(K/E/觸控「鋼球」)
       if (this.input.consumePress("action")) this.tryUseSkill();
       const meDown = this.meFall < FALL_DUR; // 被鋼球打下馬:馬停下等騎手爬回
@@ -1454,18 +1560,25 @@ export class EquestrianGame {
         this.aiSpeed += (Math.max(aiDown ? 0 : 3, aiTarget) - this.aiSpeed) * Math.min(1, delta * (aiDown ? 4 : 1.8));
         this.aiDist += this.aiSpeed * delta;
         this.aiGallopT += delta * (this.aiSpeed / 8);
-        // AI 回敬:對手騎「另一位」,各用各的招——冷卻長、有預告,溫柔版
+        // AI 回敬:對手隨機騎另外兩位之一,各用各的招——冷卻長、有預告,溫柔版
         if (!aiDown) {
-          const aiKind = this.riderId === "gyro" ? "johnny" : "gyro";
+          const aiKind = this.aiRiderId || "johnny";
           this.aiSkillCd -= delta;
           const gap = Math.abs(this.aiDist - this.dist);
           if (this.aiSkillCd <= 0 && gap > 3 && gap < 26 && this.meFall >= FALL_DUR + 1) {
             this.aiSkillCd = 14 + Math.random() * 5;
-            this.throwSteelBall("ai", aiKind);
-            this.message = aiKind === "johnny" ? "對面的喬尼射出爪彈——小心!" : "對面的傑洛擲出鋼球——小心!";
+            if (aiKind === "diego") {
+              this.aiDino = DINO_DUR;
+              if (this.aiRider.dino) this.aiRider.dino.visible = true;
+              this.message = "對面的迪亞哥恐龍化了——別讓他貼近!";
+            } else {
+              this.throwSteelBall("ai", aiKind);
+              this.message = aiKind === "johnny" ? "對面的喬尼射出爪彈——小心!" : "對面的傑洛擲出鋼球——小心!";
+            }
             this.pushHud();
           }
         }
+        if (this.aiDino > 0) aiTarget *= DINO_BOOST; // AI 恐龍化衝刺
         if (this.aiJumpAnim) {
           this.aiJumpAnim.t += delta / this.aiJumpAnim.dur;
           if (this.aiJumpAnim.t >= 1) {
