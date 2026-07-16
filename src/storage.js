@@ -6,6 +6,7 @@ const defaultSettings = {
   modeId: "standard",
   horseCoat: "brown",
   stage: "meadow",
+  opponent: "random",
   riderCharacter: "gyro",
   audioEnabled: true,
 };

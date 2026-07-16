@@ -647,6 +647,7 @@ export class EquestrianGame {
     this.coatId = HORSE_COATS[settings.horseCoat] ? settings.horseCoat : "brown";
     this.stageId = STAGES[settings.stage] ? settings.stage : "meadow";
     this.stage = STAGES[this.stageId];
+    this.opponentId = settings.opponent === "random" || RIDERS[settings.opponent] ? settings.opponent : "random";
     this.riderId = RIDERS[settings.riderCharacter] ? settings.riderCharacter : "gyro";
 
     // 技能系統(鋼球):飛行中的球、煙霧粒子、冷卻、雙方落馬計時(>=FALL_DUR=在馬上)
@@ -1182,8 +1183,9 @@ export class EquestrianGame {
   }
 
   // ---------- 局面控制 ----------
-  applyPresentation({ difficulty, modeId, horseCoat, riderCharacter, stage }) {
+  applyPresentation({ difficulty, modeId, horseCoat, riderCharacter, stage, opponent }) {
     if (stage && STAGES[stage]) this.setStage(stage);
+    if (opponent) this.setOpponent(opponent);
     if (difficulty && DIFFICULTY_PRESETS[difficulty]) this.difficulty = difficulty;
     if (modeId && GAME_MODES[modeId]) {
       this.modeId = modeId;
@@ -1191,7 +1193,7 @@ export class EquestrianGame {
     }
     if (horseCoat && HORSE_COATS[horseCoat]) this.setHorseCoat(horseCoat);
     if (riderCharacter && RIDERS[riderCharacter]) this.setRiderCharacter(riderCharacter);
-    saveSettings({ difficulty: this.difficulty, modeId: this.modeId, horseCoat: this.coatId, riderCharacter: this.riderId, stage: this.stageId });
+    saveSettings({ difficulty: this.difficulty, modeId: this.modeId, horseCoat: this.coatId, riderCharacter: this.riderId, stage: this.stageId, opponent: this.opponentId });
     this.message = `${this.mode.label} · ${DIFFICULTY_LABELS[this.difficulty]} · ${RIDERS[this.riderId].label} 騎 ${HORSE_COATS[this.coatId].label} 已設定。`;
     this.pushHud();
   }
@@ -1204,8 +1206,12 @@ export class EquestrianGame {
     this.horse.rig.add(this.rider.group);
     if (this.aiHorse) {
       if (this.aiRider) this.aiHorse.rig.remove(this.aiRider.group);
-      const pool = Object.keys(RIDERS).filter((k) => k !== this.riderId);
-      this.aiRiderId = pool[Math.floor(Math.random() * pool.length)]; // 對手隨機騎另外兩位之一
+      if (this.opponentId !== "random" && RIDERS[this.opponentId]) {
+        this.aiRiderId = this.opponentId; // 指定對手(可鏡像對決)
+      } else {
+        const pool = Object.keys(RIDERS).filter((k) => k !== this.riderId);
+        this.aiRiderId = pool[Math.floor(Math.random() * pool.length)]; // 隨機騎另外兩位之一
+      }
       this.aiRider = makeRiderCharacter(this.aiRiderId);
       poseRiderOnSaddle(this.aiRider);
       this.aiHorse.rig.add(this.aiRider.group);
@@ -1216,6 +1222,13 @@ export class EquestrianGame {
     if (!RIDERS[riderId] || riderId === this.riderId) return;
     this.riderId = riderId;
     if (this.horse) this.applyRiderCharacter();
+  }
+
+  setOpponent(opponentId) {
+    if (opponentId !== "random" && !RIDERS[opponentId]) return;
+    if (opponentId === this.opponentId) return;
+    this.opponentId = opponentId;
+    if (this.horse) this.applyRiderCharacter(); // 重生對手騎手
   }
 
   // ---------- 技能:傑洛的鋼球 ----------
