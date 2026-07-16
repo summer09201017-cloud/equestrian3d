@@ -1378,7 +1378,7 @@ export class EquestrianGame {
     const isNail = kind === "johnny";
     const mesh = isNail ? makeNailBullet() : makeSteelBall();
     const sp = srcHorse.group.position;
-    mesh.position.set(sp.x, 2.3, sp.z);
+    mesh.position.set(sp.x, sp.y + 1.7, sp.z); // 跟地形高度(寫死 2.3 在高原=生成在地底,07-17 修)
     this.scene.add(mesh);
     this.balls.push({
       mesh,
@@ -1448,7 +1448,7 @@ export class EquestrianGame {
         continue;
       }
       const tp = targetHorse.group.position;
-      const aim = new THREE.Vector3(tp.x, 1.9, tp.z).sub(b.mesh.position);
+      const aim = new THREE.Vector3(tp.x, tp.y + 1.8, tp.z).sub(b.mesh.position); // 目標高度跟地形
       const distTo = aim.length();
       aim.normalize().multiplyScalar(b.speed || BALL_SPEED);
       b.vel.lerp(aim, Math.min(1, delta * 8)); // 微追蹤:會轉彎咬住目標
@@ -1467,6 +1467,10 @@ export class EquestrianGame {
         this.spawnSmokePuff(b.mesh.position, false, b.trailColor);
       }
       if (b.t > 3.2) b.dead = true; // 長射程:鋼球 ~83m、爪彈 ~121m 內都咬得到
+      if (!b.dead && b.mesh.position.y < tp.y - 1.0 && distTo > 2.5) { // 觸地=收掉,不鑽土(07-17 修)
+        b.dead = true;
+        for (let i = 0; i < 5; i += 1) this.spawnSmokePuff(b.mesh.position, false, b.trailColor);
+      }
       if (distTo < 1.4 && !b.dead) {
         b.dead = true;
         for (let i = 0; i < 12; i += 1) this.spawnSmokePuff(b.mesh.position, true, b.trailColor); // 命中爆開(同彈色)
