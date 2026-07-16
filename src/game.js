@@ -108,10 +108,10 @@ export const STAGES = {
   desert: { label: "第二賽段・沙漠", len: 1800, desert: true, days: true },
 };
 const DAY_SECONDS = 50; // 遊戲內一天=50 現實秒(沙漠賽段以天數計時)
-const SKY_KEYS = [ // [遊戲時刻, 天色, 光強] 日夜循環
-  [0, 0x141c33, 0.35], [5, 0x141c33, 0.35], [6.5, 0xf0955f, 1.1],
+const SKY_KEYS = [ // [遊戲時刻, 天色, 光強] 日夜循環(夜=深藍,07-16 使用者點名)
+  [0, 0x0a2050, 0.35], [5, 0x0a2050, 0.35], [6.5, 0xf0955f, 1.1],
   [9, 0xa8d4ec, 1.9], [16, 0xa8d4ec, 1.9], [18.5, 0xf0854f, 1.0],
-  [20, 0x141c33, 0.35], [24, 0x141c33, 0.35],
+  [20, 0x0a2050, 0.35], [24, 0x0a2050, 0.35],
 ];
 
 const RACE_AI = { // 07-16 使用者點名 AI 要更快:全檔 boostRatio 上調
@@ -340,6 +340,59 @@ function makeGoldenSpin() {
     group.add(panel);
   }
   return { group, mats };
+}
+
+// 極光(07-16 使用者點名):三條波動光簾——底緣亮綠、頂緣淡紫,加法混色發光、不吃霧,只在夜間現身
+function makeAurora(cx = 0, cz = 0, baseR = 700) {
+  const group = new THREE.Group();
+  const curtains = [];
+  const SEGS = 96;
+  const configs = [ // 光環半徑=賽道最遠點再往外(絕不切進賽道),高掛近地平線上方
+    { r: baseR + 180, y: 105, h: 85, a0: -Math.PI, a1: Math.PI, phase: 0, speed: 0.5 },
+    { r: baseR + 310, y: 140, h: 105, a0: -Math.PI * 0.9, a1: Math.PI * 0.35, phase: 2.1, speed: 0.38 },
+    { r: baseR + 430, y: 120, h: 70, a0: -Math.PI * 0.1, a1: Math.PI * 0.95, phase: 4.2, speed: 0.66 },
+  ];
+  for (const cfg of configs) {
+    const pos = new Float32Array((SEGS + 1) * 2 * 3);
+    const col = new Float32Array((SEGS + 1) * 2 * 3);
+    const idx = [];
+    for (let i = 0; i <= SEGS; i += 1) {
+      const a = cfg.a0 + (cfg.a1 - cfg.a0) * (i / SEGS);
+      const x = cx + Math.cos(a) * cfg.r;
+      const z = cz + Math.sin(a) * cfg.r;
+      // 底緣(亮綠;加法混色下亮=顯)
+      pos[(i * 2) * 3] = x;
+      pos[(i * 2) * 3 + 1] = cfg.y;
+      pos[(i * 2) * 3 + 2] = z;
+      col[(i * 2) * 3] = 0.15; col[(i * 2) * 3 + 1] = 0.85; col[(i * 2) * 3 + 2] = 0.45;
+      // 頂緣(近黑帶紫;加法混色下黑=自然淡出)
+      pos[(i * 2 + 1) * 3] = x;
+      pos[(i * 2 + 1) * 3 + 1] = cfg.y + cfg.h;
+      pos[(i * 2 + 1) * 3 + 2] = z;
+      col[(i * 2 + 1) * 3] = 0.09; col[(i * 2 + 1) * 3 + 1] = 0.02; col[(i * 2 + 1) * 3 + 2] = 0.16;
+      if (i < SEGS) {
+        const b = i * 2;
+        idx.push(b, b + 2, b + 1, b + 1, b + 2, b + 3);
+      }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    geo.setIndex(idx);
+    const mat = new THREE.MeshBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      fog: false,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    group.add(mesh);
+    curtains.push({ mesh, base: pos.slice(), phase: cfg.phase, speed: cfg.speed });
+  }
+  group.visible = false;
+  return { group, curtains };
 }
 
 function makeRiderCharacter(riderId) {
@@ -651,7 +704,7 @@ export class EquestrianGame {
     this.scene.fog = new THREE.Fog(0x8fc4e8, 260, 1050); // 900m 賽道:遠景入霧,配大遠平面
     this.scene.fog = new THREE.Fog(0x9fd0ee, 60, 160);
 
-    this.camera = new THREE.PerspectiveCamera(52, 1, 0.1, 1400); // 900m 賽道要看得到對岸
+    this.camera = new THREE.PerspectiveCamera(52, 1, 0.1, 2600); // 大賽道+外圈極光都要看得到
     this.camPos = new THREE.Vector3(0, 6, -14);
     this.camLook = new THREE.Vector3(0, 1.2, 0);
     this.camera.position.copy(this.camPos);
@@ -723,6 +776,29 @@ export class EquestrianGame {
     this.scene.background = ca;
     if (this.scene.fog) this.scene.fog.color.copy(ca);
     this.keyLight.intensity = a[2] + (b[2] - a[2]) * t;
+
+    // 極光:入夜漸現(19.5→20.5 淡入,4.5→5.5 淡出),頂點沿光簾波動=流動感
+    if (this.aurora) {
+      let nf = 0;
+      if (h >= 20.5 || h <= 4.5) nf = 1;
+      else if (h > 19.5 && h < 20.5) nf = h - 19.5;
+      else if (h > 4.5 && h < 5.5) nf = 5.5 - h;
+      this.aurora.group.visible = nf > 0.02;
+      if (this.aurora.group.visible) {
+        for (const c of this.aurora.curtains) {
+          c.mesh.material.opacity = nf * 0.65;
+          const attr = c.mesh.geometry.getAttribute("position");
+          for (let i = 0; i < attr.count / 2; i += 1) {
+            const sway = Math.sin(i * 0.32 + this.time * c.speed + c.phase) * 12;
+            const swayTop = Math.sin(i * 0.32 + this.time * c.speed * 1.35 + c.phase + 0.9) * 22;
+            attr.array[(i * 2) * 3] = c.base[(i * 2) * 3] + sway;
+            attr.array[(i * 2 + 1) * 3] = c.base[(i * 2 + 1) * 3] + swayTop;
+            attr.array[(i * 2 + 1) * 3 + 1] = c.base[(i * 2 + 1) * 3 + 1] + Math.sin(i * 0.5 + this.time * 0.9 + c.phase) * 6;
+          }
+          attr.needsUpdate = true;
+        }
+      }
+    }
   }
 
   // ---------- 賽道:地形大環(草原 900m/沙漠 1800m;07-16 使用者點名) ----------
@@ -951,6 +1027,22 @@ export class EquestrianGame {
     rim.position.set(-25, 30, 25);
     this.scene.add(rim);
     this.keyLight = key;
+
+    this.aurora = null;
+    if (this.stage.days) { // 夜間極光(第二賽段):環繞賽道質心
+      let cx = 0, cz = 0;
+      const pts = [];
+      for (let i = 0; i < 32; i += 1) {
+        const cp = this.posAt((i / 32) * this.courseLen);
+        pts.push(cp);
+        cx += cp.x / 32;
+        cz += cp.z / 32;
+      }
+      let maxR = 0;
+      for (const cp of pts) maxR = Math.max(maxR, Math.hypot(cp.x - cx, cp.z - cz));
+      this.aurora = makeAurora(cx, cz, maxR);
+      this.scene.add(this.aurora.group);
+    }
 
     const grass = new THREE.Mesh(new THREE.PlaneGeometry(this.stage.len * 2.2, this.stage.len * 2.2), new THREE.MeshStandardMaterial({ color: this.stage.desert ? 0xe3c17f : 0x4f8a44, roughness: 1 }));
     grass.rotation.x = -Math.PI / 2;
