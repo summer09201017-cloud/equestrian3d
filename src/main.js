@@ -45,6 +45,7 @@ const ui = {
   menuDifficultySelect: document.querySelector("#menuDifficultySelect"),
   horseCoatSelect: document.querySelector("#horseCoatSelect"),
   riderSelect: document.querySelector("#riderSelect"),
+  stageSelect: document.querySelector("#stageSelect"),
   audioSelect: document.querySelector("#audioSelect"),
   modeMetaTitle: document.querySelector("#modeMetaTitle"),
   modeMetaGoal: document.querySelector("#modeMetaGoal"),
@@ -68,6 +69,7 @@ let selectedModeId = game.modeId;
 let selectedDifficulty = game.difficulty;
 let selectedCoat = game.coatId;
 let selectedRider = game.riderId;
+let selectedStage = game.stageId;
 let audioEnabled = settings.audioEnabled !== false;
 
 function persistSettings() {
@@ -76,6 +78,7 @@ function persistSettings() {
     modeId: selectedModeId,
     horseCoat: selectedCoat,
     riderCharacter: selectedRider,
+    stage: selectedStage,
     audioEnabled,
   });
 }
@@ -108,6 +111,7 @@ function syncMenuControls() {
   ui.menuDifficultySelect.value = selectedDifficulty;
   ui.horseCoatSelect.value = selectedCoat;
   ui.riderSelect.value = selectedRider;
+  ui.stageSelect.value = selectedStage;
   syncMenuCards();
 }
 
@@ -116,6 +120,7 @@ function syncGameConfigurationToMenu() {
   selectedDifficulty = game.difficulty;
   selectedCoat = game.coatId;
   selectedRider = game.riderId;
+  selectedStage = game.stageId;
   syncMenuControls();
 }
 
@@ -337,6 +342,14 @@ ui.riderSelect.addEventListener("change", (event) => {
   persistSettings();
 });
 
+ui.stageSelect.addEventListener("change", (event) => {
+  unlockAudio();
+  audio.uiTap();
+  selectedStage = event.target.value;
+  game.setStage(selectedStage); // 立即換賽段(選單背景就看得到新世界)
+  persistSettings();
+});
+
 ui.audioSelect.addEventListener("change", (event) => {
   unlockAudio();
   audio.uiTap();
@@ -351,6 +364,7 @@ ui.startMatchButton.addEventListener("click", () => {
     modeId: selectedModeId,
     horseCoat: selectedCoat,
     riderCharacter: selectedRider,
+    stage: selectedStage,
   });
   game.startSelectedMatch();
   closeHomeScreen();

@@ -102,6 +102,18 @@ const JUMP_SPAN = 4.4; // 一跳跨越的路徑長(m)
 const APPROACH_M = 14; // 進入「備跳」提示的距離
 const RACE_LANE = 0.95; // 競速:兩馬各偏路徑中線一側
 // AI 競速對手(依難度):skill=起跳品質期望、boostRatio=全速時間比
+// ---------- 賽段(07-16 使用者點名:第二賽段=沙漠長賽道,以天數計時) ----------
+export const STAGES = {
+  meadow: { label: "第一賽段・草原", len: 900, desert: false, days: false },
+  desert: { label: "第二賽段・沙漠", len: 1800, desert: true, days: true },
+};
+const DAY_SECONDS = 50; // 遊戲內一天=50 現實秒(沙漠賽段以天數計時)
+const SKY_KEYS = [ // [遊戲時刻, 天色, 光強] 日夜循環
+  [0, 0x141c33, 0.35], [5, 0x141c33, 0.35], [6.5, 0xf0955f, 1.1],
+  [9, 0xa8d4ec, 1.9], [16, 0xa8d4ec, 1.9], [18.5, 0xf0854f, 1.0],
+  [20, 0x141c33, 0.35], [24, 0x141c33, 0.35],
+];
+
 const RACE_AI = { // 07-16 使用者點名 AI 要更快:全檔 boostRatio 上調
   kids: { skill: 0.35, boostRatio: 0.25 },
   child: { skill: 0.48, boostRatio: 0.45 },
@@ -580,6 +592,8 @@ export class EquestrianGame {
     this.modeId = GAME_MODES[settings.modeId] ? settings.modeId : "standard";
     this.mode = getModeConfig(this.modeId);
     this.coatId = HORSE_COATS[settings.horseCoat] ? settings.horseCoat : "brown";
+    this.stageId = STAGES[settings.stage] ? settings.stage : "meadow";
+    this.stage = STAGES[this.stageId];
     this.riderId = RIDERS[settings.riderCharacter] ? settings.riderCharacter : "gyro";
 
     // 技能系統(鋼球):飛行中的球、煙霧粒子、冷卻、雙方落馬計時(>=FALL_DUR=在馬上)
@@ -644,8 +658,7 @@ export class EquestrianGame {
 
     this.clock = new THREE.Clock();
 
-    this.buildCourse();
-    this.setupScene();
+    this.rebuildWorld();
     this.setupInput();
 
     window.addEventListener("resize", () => this.resize());
@@ -657,7 +670,62 @@ export class EquestrianGame {
     if (this.onEvent) this.onEvent({ type, ...payload });
   }
 
-  // ---------- 賽道:900m 地形大環(07-16 使用者點名:超長賽道+陸地+樹林+下坡同一條) ----------
+  // 換賽段=整個世界重建(新 Scene+新賽道+新場景;馬/騎手/欄架全部重生)
+  setStage(stageId) {
+    if (!STAGES[stageId] || stageId === this.stageId) return;
+    this.stageId = stageId;
+    this.stage = STAGES[stageId];
+    this.rebuildWorld();
+    this.placeHorse();
+  }
+
+  rebuildWorld() {
+    this.scene = new THREE.Scene();
+    this.applySkyBase();
+    this.balls = [];
+    this.smokePuffs = [];
+    this.spinFx = [];
+    this.rider = null;
+    this.aiRider = null;
+    this.buildCourse();
+    this.setupScene();
+  }
+
+  applySkyBase() {
+    const sky = this.stage.desert ? 0xa8d4ec : 0x8fc4e8;
+    this.scene.background = new THREE.Color(sky);
+    this.scene.fog = new THREE.Fog(sky, 260, 1050);
+  }
+
+  // 天數計時(沙漠賽段):第 1 天 06 時起跑
+  dayHours() {
+    return 6 + this.elapsed * (24 / DAY_SECONDS);
+  }
+
+  dayText() {
+    const h = this.dayHours();
+    const d = Math.floor(h / 24) + 1;
+    const hh = String(Math.floor(h % 24)).padStart(2, "0");
+    return `第${d}天 ${hh}時`;
+  }
+
+  // 日夜循環:天色/霧色/主光強度照遊戲時刻輪轉
+  updateSky() {
+    if (!this.stage.days || !this.keyLight) return;
+    const h = this.dayHours() % 24;
+    let a = SKY_KEYS[0], b = SKY_KEYS[SKY_KEYS.length - 1];
+    for (let i = 0; i < SKY_KEYS.length - 1; i += 1) {
+      if (h >= SKY_KEYS[i][0] && h <= SKY_KEYS[i + 1][0]) { a = SKY_KEYS[i]; b = SKY_KEYS[i + 1]; break; }
+    }
+    const t = (h - a[0]) / (b[0] - a[0] || 1);
+    const ca = new THREE.Color(a[1]), cb = new THREE.Color(b[1]);
+    ca.lerp(cb, t);
+    this.scene.background = ca;
+    if (this.scene.fog) this.scene.fog.color.copy(ca);
+    this.keyLight.intensity = a[2] + (b[2] - a[2]) * t;
+  }
+
+  // ---------- 賽道:地形大環(草原 900m/沙漠 1800m;07-16 使用者點名) ----------
   // 分區(以里程比例 u):0~0.30 平原 → 0.30~0.42 上坡 → 0.42~0.64 樹林高原 → 0.64~0.80 陡下坡 → 0.80~1 平地衝線
   buildCourse() {
     const raw = [
@@ -665,16 +733,21 @@ export class EquestrianGame {
       [60, 90], [10, 120], [-50, 130], [-95, 95], [-120, 40], [-95, -15], [-50, -18],
     ].map(([x, z]) => new THREE.Vector3(x, 0, z));
     let curve = new THREE.CatmullRomCurve3(raw, true, "catmullrom", 0.5);
-    const scale = 900 / curve.getLength(); // 精確縮放到全長 900 公尺
+    const scale = this.stage.len / curve.getLength(); // 精確縮放到賽段全長
     for (const v of raw) { v.x *= scale; v.z *= scale; }
     this.curve = new THREE.CatmullRomCurve3(raw, true, "catmullrom", 0.5);
     this.courseLen = this.curve.getLength();
 
-    // 高度剖面(u→公尺):平原微起伏→爬升 12m→樹林高原→陡下坡回平地
-    this.heightKeys = [
-      [0, 0], [0.1, 0.8], [0.2, 1.2], [0.3, 3.5], [0.42, 12], [0.5, 13],
-      [0.58, 12.5], [0.64, 12], [0.72, 6], [0.8, 0], [0.9, 0], [1, 0],
-    ];
+    // 高度剖面(u→公尺):草原=平原→高原→陡下坡;沙漠=連綿沙丘
+    this.heightKeys = this.stage.desert
+      ? [
+          [0, 0], [0.07, 3], [0.14, 1], [0.21, 6], [0.29, 2], [0.37, 8], [0.45, 3],
+          [0.54, 13], [0.61, 6], [0.69, 9], [0.77, 3], [0.87, 0], [1, 0],
+        ]
+      : [
+          [0, 0], [0.1, 0.8], [0.2, 1.2], [0.3, 3.5], [0.42, 12], [0.5, 13],
+          [0.58, 12.5], [0.64, 12], [0.72, 6], [0.8, 0], [0.9, 0], [1, 0],
+        ];
     this.buildTerrainRibbon();
   }
 
@@ -701,6 +774,7 @@ export class EquestrianGame {
   }
 
   inForest(dist) {
+    if (this.stage.desert) return false;
     const u = (((dist % this.courseLen) + this.courseLen) % this.courseLen) / this.courseLen;
     return u >= 0.42 && u <= 0.64;
   }
@@ -710,13 +784,20 @@ export class EquestrianGame {
     const SEG = 340;
     const pos = [], col = [], idx = [];
     const skirtPos = [], skirtIdx = [];
-    const zoneColor = (u) => {
-      if (u < 0.3) return [0.85, 0.78, 0.6]; // 平原沙路
-      if (u < 0.42) return [0.74, 0.72, 0.5]; // 上坡草土
-      if (u < 0.64) return [0.45, 0.55, 0.34]; // 樹林蔭路
-      if (u < 0.8) return [0.78, 0.76, 0.7]; // 下坡碎石
-      return [0.85, 0.78, 0.6];
-    };
+    const zoneColor = this.stage.desert
+      ? (u) => {
+          if (u < 0.3) return [0.93, 0.82, 0.58]; // 淺沙
+          if (u < 0.55) return [0.88, 0.72, 0.46]; // 金沙丘
+          if (u < 0.78) return [0.82, 0.6, 0.4]; // 紅沙段
+          return [0.93, 0.82, 0.58];
+        }
+      : (u) => {
+          if (u < 0.3) return [0.85, 0.78, 0.6]; // 平原沙路
+          if (u < 0.42) return [0.74, 0.72, 0.5]; // 上坡草土
+          if (u < 0.64) return [0.45, 0.55, 0.34]; // 樹林蔭路
+          if (u < 0.8) return [0.78, 0.76, 0.7]; // 下坡碎石
+          return [0.85, 0.78, 0.6];
+        };
     for (let i = 0; i <= SEG; i += 1) {
       const u = i / SEG;
       const d = u * this.courseLen;
@@ -753,21 +834,49 @@ export class EquestrianGame {
     skirtGeo.computeVertexNormals();
     this.scene.add(new THREE.Mesh(skirtGeo, new THREE.MeshStandardMaterial({ color: 0x8a6a4a, roughness: 1, side: THREE.DoubleSide })));
 
-    // 樹林段:路肩兩側交錯種樹(站在加寬的路肩上,不懸空)
-    const treeMat = new THREE.MeshStandardMaterial({ color: 0x2e5f2a, roughness: 1 });
-    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5a3d24, roughness: 0.9 });
-    for (let d = this.courseLen * 0.42; d < this.courseLen * 0.64; d += 7) {
-      const side = Math.round(d / 7) % 2 === 0 ? 1 : -1;
-      const c = this.posAt(d);
-      const t = this.tangentAt(d);
-      const nl = Math.hypot(t.z, t.x) || 1;
-      const ox = (-t.z / nl) * 4.4 * side, oz = (t.x / nl) * 4.4 * side;
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 2.4, 6), trunkMat);
-      trunk.position.set(c.x + ox, c.y + 1.2, c.z + oz);
-      this.scene.add(trunk);
-      const crown = new THREE.Mesh(new THREE.ConeGeometry(1.7, 3.6, 7), treeMat);
-      crown.position.set(c.x + ox, c.y + 4.0, c.z + oz);
-      this.scene.add(crown);
+    if (this.stage.desert) {
+      // 沙漠沿線:仙人掌+岩石交錯(站在路肩上)
+      const cactusMat = new THREE.MeshStandardMaterial({ color: 0x4f8a4a, roughness: 0.85 });
+      const rockMat = new THREE.MeshStandardMaterial({ color: 0x9a7d5f, roughness: 1 });
+      for (let d = 30; d < this.courseLen; d += 46) {
+        const side = Math.round(d / 46) % 2 === 0 ? 1 : -1;
+        const c = this.posAt(d);
+        const t = this.tangentAt(d);
+        const nl = Math.hypot(t.z, t.x) || 1;
+        const ox = (-t.z / nl) * 4.6 * side, oz = (t.x / nl) * 4.6 * side;
+        if (Math.round(d / 46) % 3 === 2) {
+          const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.9), rockMat);
+          rock.position.set(c.x + ox, c.y + 0.4, c.z + oz);
+          this.scene.add(rock);
+        } else {
+          const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.28, 2.2, 8), cactusMat);
+          trunk.position.set(c.x + ox, c.y + 1.1, c.z + oz);
+          this.scene.add(trunk);
+          for (const ax of [-1, 1]) {
+            const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.16, 1.0, 8), cactusMat);
+            arm.rotation.z = ax * 0.9;
+            arm.position.set(c.x + ox + ax * 0.42, c.y + 1.5, c.z + oz);
+            this.scene.add(arm);
+          }
+        }
+      }
+    } else {
+      // 樹林段:路肩兩側交錯種樹(站在加寬的路肩上,不懸空)
+      const treeMat = new THREE.MeshStandardMaterial({ color: 0x2e5f2a, roughness: 1 });
+      const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5a3d24, roughness: 0.9 });
+      for (let d = this.courseLen * 0.42; d < this.courseLen * 0.64; d += 7) {
+        const side = Math.round(d / 7) % 2 === 0 ? 1 : -1;
+        const c = this.posAt(d);
+        const t = this.tangentAt(d);
+        const nl = Math.hypot(t.z, t.x) || 1;
+        const ox = (-t.z / nl) * 4.4 * side, oz = (t.x / nl) * 4.4 * side;
+        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 2.4, 6), trunkMat);
+        trunk.position.set(c.x + ox, c.y + 1.2, c.z + oz);
+        this.scene.add(trunk);
+        const crown = new THREE.Mesh(new THREE.ConeGeometry(1.7, 3.6, 7), treeMat);
+        crown.position.set(c.x + ox, c.y + 4.0, c.z + oz);
+        this.scene.add(crown);
+      }
     }
   }
 
@@ -832,16 +941,18 @@ export class EquestrianGame {
 
   // ---------- 場景 ----------
   setupScene() {
-    const sun = new THREE.HemisphereLight(0xffffff, 0x557040, 1.3);
+    const sun = new THREE.HemisphereLight(0xffffff, this.stage.desert ? 0x8a6a45 : 0x557040, 1.3);
     this.scene.add(sun);
+    this.hemiLight = sun;
     const key = new THREE.DirectionalLight(0xfff2d4, 1.9);
     key.position.set(30, 50, -20);
     this.scene.add(key);
     const rim = new THREE.DirectionalLight(0x9ccbff, 0.6);
     rim.position.set(-25, 30, 25);
     this.scene.add(rim);
+    this.keyLight = key;
 
-    const grass = new THREE.Mesh(new THREE.PlaneGeometry(900, 900), new THREE.MeshStandardMaterial({ color: 0x4f8a44, roughness: 1 }));
+    const grass = new THREE.Mesh(new THREE.PlaneGeometry(this.stage.len * 2.2, this.stage.len * 2.2), new THREE.MeshStandardMaterial({ color: this.stage.desert ? 0xe3c17f : 0x4f8a44, roughness: 1 }));
     grass.rotation.x = -Math.PI / 2;
     grass.position.y = -0.02;
     this.scene.add(grass);
@@ -979,7 +1090,8 @@ export class EquestrianGame {
   }
 
   // ---------- 局面控制 ----------
-  applyPresentation({ difficulty, modeId, horseCoat, riderCharacter }) {
+  applyPresentation({ difficulty, modeId, horseCoat, riderCharacter, stage }) {
+    if (stage && STAGES[stage]) this.setStage(stage);
     if (difficulty && DIFFICULTY_PRESETS[difficulty]) this.difficulty = difficulty;
     if (modeId && GAME_MODES[modeId]) {
       this.modeId = modeId;
@@ -987,7 +1099,7 @@ export class EquestrianGame {
     }
     if (horseCoat && HORSE_COATS[horseCoat]) this.setHorseCoat(horseCoat);
     if (riderCharacter && RIDERS[riderCharacter]) this.setRiderCharacter(riderCharacter);
-    saveSettings({ difficulty: this.difficulty, modeId: this.modeId, horseCoat: this.coatId, riderCharacter: this.riderId });
+    saveSettings({ difficulty: this.difficulty, modeId: this.modeId, horseCoat: this.coatId, riderCharacter: this.riderId, stage: this.stageId });
     this.message = `${this.mode.label} · ${DIFFICULTY_LABELS[this.difficulty]} · ${RIDERS[this.riderId].label} 騎 ${HORSE_COATS[this.coatId].label} 已設定。`;
     this.pushHud();
   }
@@ -1392,7 +1504,7 @@ export class EquestrianGame {
     this.phase = "ended";
     if (this.mode.race) {
       const win = !this.aiFinished; // 我方先觸發完賽=贏;AI 先到觸發=輸
-      const timeText = this.elapsed.toFixed(1) + " 秒";
+      const timeText = this.stage.days ? this.dayText() : this.elapsed.toFixed(1) + " 秒";
       if (win) this.spawnConfetti();
       this.overlay = {
         visible: true,
@@ -1414,7 +1526,7 @@ export class EquestrianGame {
     const overTime = Math.max(0, this.elapsed - allowed);
     const timeFaults = allowed >= 999 ? 0 : Math.ceil(overTime / 4);
     const total = this.faults + timeFaults;
-    const timeText = `${this.elapsed.toFixed(1)} 秒`;
+    const timeText = this.stage.days ? this.dayText() : `${this.elapsed.toFixed(1)} 秒`;
     if (this.mode.jumpoff) {
       const score = this.elapsed + this.faults;
       this.overlay = {
@@ -1632,6 +1744,7 @@ export class EquestrianGame {
     this.handleKeys();
     this.updateHorsePose();
     this.placeHorse();
+    this.updateSky();
     this.updateCamera(delta);
 
     this.autoSaveTimer += delta;
@@ -1811,6 +1924,7 @@ export class EquestrianGame {
     const phaseLabels = { menu: "主選單", gate: "出發線", riding: "騎行", jumping: "騰空", ended: "完賽" };
     const mins = Math.floor(this.elapsed / 60);
     const secs = (this.elapsed % 60).toFixed(1).padStart(4, "0");
+    const clockText = this.stage.days ? this.dayText() : `${mins}:${secs}`;
     this.onHudUpdate({
       faults: this.faults,
       clears: this.clears,
@@ -1818,7 +1932,7 @@ export class EquestrianGame {
       fenceCount: this.fences ? this.fences.length : 0,
       lap: this.lap,
       endless: !!this.mode.endless,
-      timeText: `${mins}:${secs}`,
+      timeText: clockText,
       timeAllowed: this.mode.race
         ? (this.phase === "riding" || this.phase === "jumping"
           ? (this.dist >= this.aiDist ? "領先 " + (this.dist - this.aiDist).toFixed(0) + " m" : "落後 " + (this.aiDist - this.dist).toFixed(0) + " m")

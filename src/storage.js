@@ -5,6 +5,7 @@ const defaultSettings = {
   difficulty: "normal",
   modeId: "standard",
   horseCoat: "brown",
+  stage: "meadow",
   riderCharacter: "gyro",
   audioEnabled: true,
 };
