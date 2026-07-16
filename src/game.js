@@ -376,8 +376,8 @@ function makeRiderCharacter(riderId) {
     // 雙向橫條黃條紋(07-16 使用者點名):兩組斜向條紋交叉成 X,前後都看得到
     const stripeMat = new THREE.MeshStandardMaterial({ color: 0xf6d743, roughness: 0.65 });
     for (const tilt of [0.32, -0.32]) {
-      for (const sy of [1.18, 1.36, 1.54, 1.72]) {
-        const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.03, 0.345), stripeMat);
+      for (const sy of [1.12, 1.25, 1.38, 1.51, 1.64, 1.77]) {
+        const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.016, 0.345), stripeMat);
         stripe.position.set(0, sy, 0);
         stripe.rotation.z = tilt;
         rider.rig.add(stripe);
