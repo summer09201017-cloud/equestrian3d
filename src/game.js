@@ -781,7 +781,7 @@ export class EquestrianGame {
     this.blizzard = gust;
     if (gust > 0.5 && !this.blizzardWarned) {
       this.blizzardWarned = true;
-      this.message = "暴風雪來了——壓低身子穩住!";
+      this.message = "暴風雪來了——白茫一片,看緊路線!";
       this.pushHud();
     }
     if (gust < 0.2) this.blizzardWarned = false;
@@ -1846,7 +1846,6 @@ export class EquestrianGame {
       this.turboVis = turbo;
       this.knockSlowT = (this.knockSlowT ?? 9) + delta;
       if (this.mode.race && this.knockSlowT < 1.4) target *= 0.5; // 碰桿踉蹌
-      if (this.blizzard > 0) target *= 1 - 0.15 * this.blizzard; // 暴風雪頂風減速
       const meFrozen = this.aiTimeStop > 0; // 被 THE WORLD 停住
       if (meFrozen) target = 0;
       // 技能鍵(K/E/觸控「鋼球」)
@@ -1906,7 +1905,6 @@ export class EquestrianGame {
           this.aiStamina = Math.min(1, this.aiStamina + TURBO_REGEN * delta);
         }
         if (this.aiStamina <= 0 && !this.aiTired) this.aiTired = true;
-        if (this.blizzard > 0) aiTarget *= 1 - 0.15 * this.blizzard; // 暴風雪對 AI 同罰
         const aiDown = this.aiFall < FALL_DUR;
         if (aiDown) aiTarget = 0;
         this.aiSpeed += (Math.max(aiDown ? 0 : 3, aiTarget) - this.aiSpeed) * Math.min(1, delta * (aiDown ? 4 : 1.8));
