@@ -580,9 +580,10 @@ export class EquestrianGame {
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x8fc4e8);
+    this.scene.fog = new THREE.Fog(0x8fc4e8, 260, 1050); // 900m 賽道:遠景入霧,配大遠平面
     this.scene.fog = new THREE.Fog(0x9fd0ee, 60, 160);
 
-    this.camera = new THREE.PerspectiveCamera(52, 1, 0.1, 240);
+    this.camera = new THREE.PerspectiveCamera(52, 1, 0.1, 1400); // 900m 賽道要看得到對岸
     this.camPos = new THREE.Vector3(0, 6, -14);
     this.camLook = new THREE.Vector3(0, 1.2, 0);
     this.camera.position.copy(this.camPos);
@@ -602,22 +603,125 @@ export class EquestrianGame {
     if (this.onEvent) this.onEvent({ type, ...payload });
   }
 
-  // ---------- 賽道(閉環樣條)+障礙 ----------
+  // ---------- 賽道:900m 地形大環(07-16 使用者點名:超長賽道+陸地+樹林+下坡同一條) ----------
+  // 分區(以里程比例 u):0~0.30 平原 → 0.30~0.42 上坡 → 0.42~0.64 樹林高原 → 0.64~0.80 陡下坡 → 0.80~1 平地衝線
   buildCourse() {
-    const pts = [];
-    const RX = 30, RZ = 21;
-    for (let i = 0; i < 10; i += 1) {
-      const a = (i / 10) * Math.PI * 2;
-      const w = i % 2 === 0 ? 1.0 : 1.14; // 交錯外凸=直線與彎道交替的有機環
-      pts.push(new THREE.Vector3(Math.cos(a) * RX * w, 0, Math.sin(a) * RZ * w));
-    }
-    this.curve = new THREE.CatmullRomCurve3(pts, true, "catmullrom", 0.5);
+    const raw = [
+      [0, 0], [60, -14], [110, 10], [150, -10], [185, 25], [170, 80], [120, 105],
+      [60, 90], [10, 120], [-50, 130], [-95, 95], [-120, 40], [-95, -15], [-50, -18],
+    ].map(([x, z]) => new THREE.Vector3(x, 0, z));
+    let curve = new THREE.CatmullRomCurve3(raw, true, "catmullrom", 0.5);
+    const scale = 900 / curve.getLength(); // 精確縮放到全長 900 公尺
+    for (const v of raw) { v.x *= scale; v.z *= scale; }
+    this.curve = new THREE.CatmullRomCurve3(raw, true, "catmullrom", 0.5);
     this.courseLen = this.curve.getLength();
+
+    // 高度剖面(u→公尺):平原微起伏→爬升 12m→樹林高原→陡下坡回平地
+    this.heightKeys = [
+      [0, 0], [0.1, 0.8], [0.2, 1.2], [0.3, 3.5], [0.42, 12], [0.5, 13],
+      [0.58, 12.5], [0.64, 12], [0.72, 6], [0.8, 0], [0.9, 0], [1, 0],
+    ];
+    this.buildTerrainRibbon();
+  }
+
+  heightAt(dist) {
+    const u = (((dist % this.courseLen) + this.courseLen) % this.courseLen) / this.courseLen;
+    const k = this.heightKeys;
+    for (let i = 0; i < k.length - 1; i += 1) {
+      if (u >= k[i][0] && u <= k[i + 1][0]) {
+        const t = (u - k[i][0]) / (k[i + 1][0] - k[i][0] || 1);
+        const sm = t * t * (3 - 2 * t); // smoothstep=坡頂坡底圓滑
+        return k[i][1] + (k[i + 1][1] - k[i][1]) * sm;
+      }
+    }
+    return 0;
+  }
+
+  slopePitch(dist) { // 沿途俯仰角(下坡=正值鼻朝下;YXZ 序配 yaw)
+    return Math.atan2(-(this.heightAt(dist + 2.5) - this.heightAt(dist - 2.5)), 5);
+  }
+
+  allowedTime(preset) { // 900m 長賽道:容許時間=航程/基速×1.35+8(幼兒不限時照舊)
+    if (preset.timeAllowed >= 999) return 999;
+    return Math.round((this.courseLen / preset.baseSpeed) * 1.35 + 8);
+  }
+
+  inForest(dist) {
+    const u = (((dist % this.courseLen) + this.courseLen) % this.courseLen) / this.courseLen;
+    return u >= 0.42 && u <= 0.64;
+  }
+
+  // 路面帶狀網格(頂點色分區)+兩側邊坡裙+樹林段路肩種樹
+  buildTerrainRibbon() {
+    const SEG = 340;
+    const pos = [], col = [], idx = [];
+    const skirtPos = [], skirtIdx = [];
+    const zoneColor = (u) => {
+      if (u < 0.3) return [0.85, 0.78, 0.6]; // 平原沙路
+      if (u < 0.42) return [0.74, 0.72, 0.5]; // 上坡草土
+      if (u < 0.64) return [0.45, 0.55, 0.34]; // 樹林蔭路
+      if (u < 0.8) return [0.78, 0.76, 0.7]; // 下坡碎石
+      return [0.85, 0.78, 0.6];
+    };
+    for (let i = 0; i <= SEG; i += 1) {
+      const u = i / SEG;
+      const d = u * this.courseLen;
+      const c = this.curve.getPointAt(u % 1);
+      const y = this.heightAt(d);
+      const t = this.curve.getTangentAt(u % 1);
+      const nx = -t.z, nz = t.x;
+      const nl = Math.hypot(nx, nz) || 1;
+      const w = this.inForest(d) ? 5.2 : 3.8; // 樹林段路面加寬(樹種在路肩不懸空)
+      const lx = c.x + (nx / nl) * w, lz = c.z + (nz / nl) * w;
+      const rx = c.x - (nx / nl) * w, rz = c.z - (nz / nl) * w;
+      pos.push(lx, y + 0.02, lz, rx, y + 0.02, rz);
+      const cc = zoneColor(u);
+      col.push(...cc, ...cc);
+      skirtPos.push(lx, y + 0.02, lz, lx, -0.05, lz, rx, y + 0.02, rz, rx, -0.05, rz);
+      if (i < SEG) {
+        const a = i * 2;
+        idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
+        const b = i * 4;
+        skirtIdx.push(b, b + 4, b + 1, b + 1, b + 4, b + 5); // 左裙
+        skirtIdx.push(b + 2, b + 3, b + 6, b + 3, b + 7, b + 6); // 右裙
+      }
+    }
+    const roadGeo = new THREE.BufferGeometry();
+    roadGeo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    roadGeo.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+    roadGeo.setIndex(idx);
+    roadGeo.computeVertexNormals();
+    this.roadMesh = new THREE.Mesh(roadGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, side: THREE.DoubleSide }));
+    this.scene.add(this.roadMesh);
+    const skirtGeo = new THREE.BufferGeometry();
+    skirtGeo.setAttribute("position", new THREE.Float32BufferAttribute(skirtPos, 3));
+    skirtGeo.setIndex(skirtIdx);
+    skirtGeo.computeVertexNormals();
+    this.scene.add(new THREE.Mesh(skirtGeo, new THREE.MeshStandardMaterial({ color: 0x8a6a4a, roughness: 1, side: THREE.DoubleSide })));
+
+    // 樹林段:路肩兩側交錯種樹(站在加寬的路肩上,不懸空)
+    const treeMat = new THREE.MeshStandardMaterial({ color: 0x2e5f2a, roughness: 1 });
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5a3d24, roughness: 0.9 });
+    for (let d = this.courseLen * 0.42; d < this.courseLen * 0.64; d += 7) {
+      const side = Math.round(d / 7) % 2 === 0 ? 1 : -1;
+      const c = this.posAt(d);
+      const t = this.tangentAt(d);
+      const nl = Math.hypot(t.z, t.x) || 1;
+      const ox = (-t.z / nl) * 4.4 * side, oz = (t.x / nl) * 4.4 * side;
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 2.4, 6), trunkMat);
+      trunk.position.set(c.x + ox, c.y + 1.2, c.z + oz);
+      this.scene.add(trunk);
+      const crown = new THREE.Mesh(new THREE.ConeGeometry(1.7, 3.6, 7), treeMat);
+      crown.position.set(c.x + ox, c.y + 4.0, c.z + oz);
+      this.scene.add(crown);
+    }
   }
 
   posAt(dist) {
     const u = (((dist % this.courseLen) + this.courseLen) % this.courseLen) / this.courseLen;
-    return this.curve.getPointAt(u);
+    const p = this.curve.getPointAt(u);
+    p.y = this.heightAt(dist); // 地形高度接在樣條上:全引擎(馬/欄/鏡頭)自動跟高度
+    return p;
   }
 
   tangentAt(dist) {
@@ -630,11 +734,12 @@ export class EquestrianGame {
     this.fenceGroup = new THREE.Group();
     this.fences = [];
     const preset = DIFFICULTY_PRESETS[this.difficulty];
-    const n = this.mode.jumpoff ? Math.max(5, preset.fences - 2) : preset.fences;
+    const n = (this.mode.jumpoff ? Math.max(5, preset.fences - 2) : preset.fences) * 2; // 900m 長賽道:欄門加倍(~每 50m 一道)
     const woodMat = new THREE.MeshStandardMaterial({ color: 0xe9e2d2, roughness: 0.8 });
     const railColors = [0xd8433c, 0x3f7be0, 0xf6d743, 0x4fae6a];
     for (let i = 0; i < n; i += 1) {
-      const d = this.courseLen * ((i + 1) / (n + 1));
+      let d = this.courseLen * ((i + 1) / (n + 1));
+      for (let tries = 0; tries < 4 && Math.abs(this.slopePitch(d)) > 0.1; tries += 1) d += 9; // 最陡段不放欄
       const p = this.posAt(d);
       const t = this.tangentAt(d);
       const yaw = Math.atan2(t.x, t.z);
@@ -682,7 +787,7 @@ export class EquestrianGame {
     rim.position.set(-25, 30, 25);
     this.scene.add(rim);
 
-    const grass = new THREE.Mesh(new THREE.PlaneGeometry(320, 320), new THREE.MeshStandardMaterial({ color: 0x4f8a44, roughness: 1 }));
+    const grass = new THREE.Mesh(new THREE.PlaneGeometry(900, 900), new THREE.MeshStandardMaterial({ color: 0x4f8a44, roughness: 1 }));
     grass.rotation.x = -Math.PI / 2;
     grass.position.y = -0.02;
     this.scene.add(grass);
@@ -715,8 +820,8 @@ export class EquestrianGame {
       const dot = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 2.6), laneMat);
       dot.rotation.order = "YXZ"; // 先繞 y 對齊路徑方向,再倒平到地面(XYZ 順序會變鋸齒)
       dot.rotation.y = Math.atan2(t.x, t.z);
-      dot.rotation.x = -Math.PI / 2;
-      dot.position.set(p.x, 0.012, p.z);
+      dot.rotation.x = -Math.PI / 2 + this.slopePitch(d); // 貼坡
+      dot.position.set(p.x, p.y + 0.06, p.z);
       this.scene.add(dot);
     }
 
@@ -785,14 +890,18 @@ export class EquestrianGame {
       ox = -t.z * RACE_LANE;
       oz = t.x * RACE_LANE;
     }
-    this.horse.group.position.set(p.x + ox, this.jumpY(), p.z + oz);
+    this.horse.group.position.set(p.x + ox, p.y + this.jumpY(), p.z + oz);
+    this.horse.group.rotation.order = "YXZ"; // 先 yaw 再俯仰(貼片鐵則同款)
     this.horse.group.rotation.y = Math.atan2(t.x, t.z);
+    this.horse.group.rotation.x = this.slopePitch(this.dist) * 0.8; // 下坡鼻朝下
     if (this.mode.race && this.aiHorse && this.aiHorse.group.visible) {
       const ap = this.posAt(this.aiDist);
       const at = this.tangentAt(this.aiDist);
       const ay = this.aiJumpAnim ? Math.sin(Math.PI * clamp(this.aiJumpAnim.t, 0, 1)) * this.aiJumpAnim.height : 0;
-      this.aiHorse.group.position.set(ap.x + at.z * RACE_LANE, ay, ap.z - at.x * RACE_LANE);
+      this.aiHorse.group.position.set(ap.x + at.z * RACE_LANE, ap.y + ay, ap.z - at.x * RACE_LANE);
+      this.aiHorse.group.rotation.order = "YXZ";
       this.aiHorse.group.rotation.y = Math.atan2(at.x, at.z);
+      this.aiHorse.group.rotation.x = this.slopePitch(this.aiDist) * 0.8;
     }
   }
 
@@ -1207,8 +1316,9 @@ export class EquestrianGame {
       return;
     }
     const preset = DIFFICULTY_PRESETS[this.difficulty];
-    const overTime = Math.max(0, this.elapsed - preset.timeAllowed);
-    const timeFaults = preset.timeAllowed >= 999 ? 0 : Math.ceil(overTime / 4);
+    const allowed = this.allowedTime(preset);
+    const overTime = Math.max(0, this.elapsed - allowed);
+    const timeFaults = allowed >= 999 ? 0 : Math.ceil(overTime / 4);
     const total = this.faults + timeFaults;
     const timeText = `${this.elapsed.toFixed(1)} 秒`;
     if (this.mode.jumpoff) {
@@ -1530,18 +1640,20 @@ export class EquestrianGame {
       desiredPos = new THREE.Vector3(Math.cos(a) * 40, 12, Math.sin(a) * 40);
       desiredLook = new THREE.Vector3(0, 1, 0);
     } else if (this.cameraView === 0) {
-      desiredPos = new THREE.Vector3(p.x - t.x * 8.6, 4.4 + y * 0.5, p.z - t.z * 8.6);
-      desiredLook = new THREE.Vector3(p.x + t.x * 7, 1.3 + y, p.z + t.z * 7);
+      const backH = this.heightAt(this.dist - 8.6);
+      desiredPos = new THREE.Vector3(p.x - t.x * 8.6, backH + 4.4 + y * 0.5, p.z - t.z * 8.6);
+      desiredLook = new THREE.Vector3(p.x + t.x * 7, p.y + 1.3 + y, p.z + t.z * 7);
     } else if (this.cameraView === 1) {
       const side = new THREE.Vector3(t.z, 0, -t.x);
-      desiredPos = new THREE.Vector3(p.x + side.x * 13, 3.6, p.z + side.z * 13);
-      desiredLook = new THREE.Vector3(p.x, 1.2 + y, p.z);
+      desiredPos = new THREE.Vector3(p.x + side.x * 13, p.y + 3.6, p.z + side.z * 13);
+      desiredLook = new THREE.Vector3(p.x, p.y + 1.2 + y, p.z);
     } else if (this.cameraView === 2) {
-      desiredPos = new THREE.Vector3(p.x + 3, 26, p.z + 3);
-      desiredLook = new THREE.Vector3(p.x + t.x * 6, 0.5, p.z + t.z * 6);
+      desiredPos = new THREE.Vector3(p.x + 3, p.y + 26, p.z + 3);
+      desiredLook = new THREE.Vector3(p.x + t.x * 6, p.y + 0.5, p.z + t.z * 6);
     } else {
-      desiredPos = new THREE.Vector3(p.x - t.x * 0.6, 2.5 + y, p.z - t.z * 0.6);
-      desiredLook = new THREE.Vector3(p.x + t.x * 12, 1.2 + y, p.z + t.z * 12);
+      const aheadH = this.heightAt(this.dist + 12);
+      desiredPos = new THREE.Vector3(p.x - t.x * 0.6, p.y + 2.5 + y, p.z - t.z * 0.6);
+      desiredLook = new THREE.Vector3(p.x + t.x * 12, aheadH + 1.2 + y, p.z + t.z * 12);
     }
     const k = 1 - Math.exp(-delta * 3.2);
     this.camPos.lerp(desiredPos, k);
@@ -1601,7 +1713,7 @@ export class EquestrianGame {
         ? (this.phase === "riding" || this.phase === "jumping"
           ? (this.dist >= this.aiDist ? "領先 " + (this.dist - this.aiDist).toFixed(0) + " m" : "落後 " + (this.aiDist - this.dist).toFixed(0) + " m")
           : "先到終點者勝")
-        : preset.timeAllowed >= 999 ? "不限時" : preset.timeAllowed + " 秒",
+        : this.allowedTime(preset) >= 999 ? "不限時" : this.allowedTime(preset) + " 秒",
       modeLabel: this.mode.label,
       difficultyLabel: DIFFICULTY_LABELS[this.difficulty],
       phaseLabel: phaseLabels[this.phase] || "",
