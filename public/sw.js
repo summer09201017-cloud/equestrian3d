@@ -1,5 +1,5 @@
 // 網路優先 HTML+快取優先資產(07-13 修復:cache-first 舊 index 會在部署後 404 壞站)
-const CACHE_NAME = "equestrian3d-nf16"; // nf16:對手騎手可選(含鏡像對決)
+const CACHE_NAME = "equestrian3d-nf17"; // nf17:AI 遠距也會發招(時停無限距/投擲照彈道射程)
 const CORE_ASSETS = ["/", "/index.html", "/manifest.webmanifest", "/icon.svg", "/icon-maskable.svg"];
 
 self.addEventListener("install", (event) => {

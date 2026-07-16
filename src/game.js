@@ -1363,7 +1363,7 @@ export class EquestrianGame {
         b.smokeT -= 0.035;
         this.spawnSmokePuff(b.mesh.position, false, b.trailColor);
       }
-      if (b.t > 2.4) b.dead = true;
+      if (b.t > 3.2) b.dead = true; // 長射程:鋼球 ~83m、爪彈 ~121m 內都咬得到
       if (distTo < 1.4 && !b.dead) {
         b.dead = true;
         for (let i = 0; i < 12; i += 1) this.spawnSmokePuff(b.mesh.position, true, b.trailColor); // 命中爆開(同彈色)
@@ -1779,7 +1779,9 @@ export class EquestrianGame {
           const aiKind = this.aiRiderId || "johnny";
           this.aiSkillCd -= delta;
           const gap = Math.abs(this.aiDist - this.dist);
-          if (this.aiSkillCd <= 0 && gap > 3 && gap < 26 && this.meFall >= FALL_DUR + 1) {
+          // 發招距離依招式:時停不吃距離;投擲系=彈道壽命內追得到的範圍
+          const range = aiKind === "diego" ? Infinity : aiKind === "johnny" ? 100 : 70;
+          if (this.aiSkillCd <= 0 && gap > 2 && gap < range && this.meFall >= FALL_DUR + 1) {
             this.aiSkillCd = 14 + Math.random() * 5;
             if (aiKind === "diego") {
               this.aiTimeStop = TIMESTOP_AI_DUR;
