@@ -72,10 +72,10 @@ body::before {
   transform: translateX(-50%);
   z-index: 4;
   display: grid;
-  grid-template-columns: minmax(7rem, 9rem) minmax(13rem, 17rem) minmax(7rem, 9rem);
+  grid-template-columns: minmax(7rem, 9rem) minmax(14rem, 21rem) minmax(7rem, 9rem); /* 07-18:中欄加寬,長字不溢到血量卡 */
   align-items: center;
   gap: 0.9rem;
-  width: min(56rem, calc(100vw - 2rem));
+  width: min(60rem, calc(100vw - 2rem));
   animation: board-enter 0.65s ease both;
 }
 
@@ -138,6 +138,13 @@ body::before {
   padding: 0.65rem 0.8rem;
   border-radius: 1rem;
   background: rgba(255, 255, 255, 0.04);
+  min-width: 0; /* 07-18:grid 溢出剋星——長字改截斷,不撐爆面板 */
+}
+.clock-stack strong,
+.clock-stack .stack-subtext {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .clock-stack strong {
@@ -180,7 +187,7 @@ body::before {
 
 .message-ribbon {
   position: absolute;
-  top: clamp(6rem, 12vw, 8.2rem);
+  top: 16.6rem; /* 07-18:移到頂部面板下方,不擋血量/回合 */
   left: 50%;
   transform: translateX(-50%);
   z-index: 4;
@@ -640,7 +647,7 @@ button.active {
   }
 
   .message-ribbon {
-    top: clamp(6.7rem, 15vw, 7.6rem);
+    top: 13.4rem; /* 07-18:手機版同樣讓開頂部面板 */
     width: calc(100vw - 1rem);
     border-radius: 1.15rem;
   }
@@ -703,7 +710,7 @@ button.active {
 .commentary-bar {
   position: fixed;
   left: 50%;
-  top: 72px;
+  top: 13.4rem; /* 07-18:移到面板下方 */
   transform: translateX(-50%);
   max-width: min(86vw, 640px);
   padding: 8px 18px;
@@ -729,7 +736,7 @@ button.active {
   100% { opacity: 0; }
 }
 @media (max-width: 720px) {
-  .commentary-bar { top: 58px; font-size: 14px; padding: 6px 14px; }
+  .commentary-bar { top: 10.8rem; font-size: 14px; padding: 6px 14px; }
 }
 
 /* 07-14 拍板:大力道條(中下方,由左到右亮起,投影可讀) */
