@@ -178,6 +178,15 @@ function makePerson({ shirt = 0x2f6f4e, pants = 0x2a3550, skin = 0xf3cca6, hair 
   const chest = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.76, 0.32), shirtMat);
   chest.position.y = 1.42;
   rig.add(chest);
+  // 身體結構(07-17):上胸肩線加寬=V 形軀幹;高度避開角色胸前配件(條紋/星)
+  const upperChest = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.18, 0.3), shirtMat);
+  upperChest.position.y = 1.7;
+  rig.add(upperChest);
+  for (const sx of [-1, 1]) {
+    const deltoid = new THREE.Mesh(new THREE.SphereGeometry(0.088, 10, 8), shirtMat); // 肩三角肌
+    deltoid.position.set(sx * 0.37, 1.73, 0);
+    rig.add(deltoid);
+  }
   const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.1, 0.2, 12), skinMat);
   neck.position.y = 1.88;
   rig.add(neck);
@@ -257,6 +266,9 @@ function makePerson({ shirt = 0x2f6f4e, pants = 0x2a3550, skin = 0xf3cca6, hair 
     });
     arm.pivot.position.set(x, 1.72, 0);
     arm.joint.rotation.x = -0.18;
+    const elbow = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), shirtMat); // 手肘
+    elbow.position.set(0, -0.27, 0);
+    arm.pivot.add(elbow);
     rig.add(arm.pivot);
     return arm;
   };
@@ -271,6 +283,9 @@ function makePerson({ shirt = 0x2f6f4e, pants = 0x2a3550, skin = 0xf3cca6, hair 
     leg.pivot.position.set(x, 1.0, 0);
     leg.pivot.rotation.x = -0.05;
     leg.joint.rotation.x = 0.1;
+    const knee = new THREE.Mesh(new THREE.SphereGeometry(0.075, 8, 8), pantsMat); // 膝蓋
+    knee.position.set(0, -0.4, 0);
+    leg.pivot.add(knee);
     rig.add(leg.pivot);
     return leg;
   };
@@ -513,6 +528,16 @@ function makeRiderCharacter(riderId) {
       rider.capes.push(pivot);
     }
   }
+  // 騎士靴(07-17 身體結構):長筒靴罩住小腿,掛 joint 跟著跨鞍彎曲
+  const bootMat = new THREE.MeshStandardMaterial({ color: 0x241a12, roughness: 0.5 });
+  for (const leg of [rider.leftLeg, rider.rightLeg]) {
+    const boot = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.3, 0.17), bootMat);
+    boot.position.set(0, -0.2, 0.01);
+    leg.joint.add(boot);
+    const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.088, 0.08, 10), bootMat); // 靴口
+    cuff.position.set(0, -0.06, 0);
+    leg.joint.add(cuff);
+  }
   return rider;
 }
 
@@ -553,15 +578,46 @@ function makeHorse({ coat = 0x8a5a33, mane = 0x3a2a1c } = {}) {
   const rump = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.5, 0.42), coatMat);
   rump.position.set(0, 1.6, -0.95);
   rig.add(rump);
+  // 身體結構(07-17 使用者點名):肩肌/臀肌/圓腹/鬐甲/胸肌——箱體軀幹上加圓弧肌群,馬味立刻出來
+  for (const side of [-1, 1]) {
+    const shoulder = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 10), coatMat);
+    shoulder.position.set(side * 0.22, 1.5, 0.74);
+    shoulder.scale.set(1.0, 1.1, 1.35);
+    rig.add(shoulder);
+    const haunch = new THREE.Mesh(new THREE.SphereGeometry(0.23, 12, 10), coatMat); // 後臀大肌
+    haunch.position.set(side * 0.19, 1.52, -0.8);
+    haunch.scale.set(1.05, 1.15, 1.3);
+    rig.add(haunch);
+    const pec = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), coatMat); // 胸前肌(兩瓣,塞在胸口不下垂)
+    pec.position.set(side * 0.12, 1.5, 1.1);
+    pec.scale.set(1, 1.25, 1);
+    rig.add(pec);
+  }
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(0.3, 14, 12), coatMat); // 圓腹(箱體下緣的弧線)
+  belly.position.set(0, 1.4, -0.05);
+  belly.scale.set(1.02, 0.82, 1.8);
+  rig.add(belly);
+  const withers = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.16, 0.46), coatMat); // 鬐甲(肩隆)
+  withers.position.set(0, 1.92, 0.62);
+  withers.rotation.x = -0.14;
+  rig.add(withers);
+  const girth = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.68, 0.09), new THREE.MeshStandardMaterial({ color: 0x4a2f1c, roughness: 0.55 })); // 肚帶(鞍的束帶)
+  girth.position.set(0, 1.56, 0.12);
+  rig.add(girth);
 
   // 頸(斜上)+頭(兩側眼睛=臉部鐵則動物版)+雙耳+鬃毛
   const neckPivot = new THREE.Group();
   neckPivot.position.set(0, 1.82, 1.05);
   rig.add(neckPivot);
-  const neck = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.72, 0.34), coatMat);
-  neck.rotation.x = 0.7;
-  neck.position.set(0, 0.26, 0.2);
-  neckPivot.add(neck);
+  // 雙節斜頸(07-17 身體結構):下段寬、上段窄,接出天鵝頸的弧
+  const neckLower = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.5, 0.42), coatMat);
+  neckLower.rotation.x = 0.55;
+  neckLower.position.set(0, 0.1, 0.1);
+  neckPivot.add(neckLower);
+  const neckUpper = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.46, 0.3), coatMat);
+  neckUpper.rotation.x = 0.85;
+  neckUpper.position.set(0, 0.42, 0.32);
+  neckPivot.add(neckUpper);
   const head = new THREE.Group();
   head.position.set(0, 0.62, 0.5);
   neckPivot.add(head);
@@ -572,6 +628,18 @@ function makeHorse({ coat = 0x8a5a33, mane = 0x3a2a1c } = {}) {
   muzzle.position.set(0, -0.12, 0.34);
   muzzle.rotation.x = 0.35;
   head.add(muzzle);
+  const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.13, 0.3), coatMat); // 下顎線
+  jaw.position.set(0, -0.21, 0.1);
+  jaw.rotation.x = 0.35;
+  head.add(jaw);
+  for (const side of [-1, 1]) {
+    const cheek = new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 8), coatMat); // 腮(顴肌)
+    cheek.position.set(side * 0.11, -0.03, 0.02);
+    head.add(cheek);
+    const nostril = new THREE.Mesh(new THREE.SphereGeometry(0.024, 8, 6), new THREE.MeshBasicMaterial({ color: 0x1c1712 })); // 鼻孔
+    nostril.position.set(side * 0.052, -0.175, 0.47);
+    head.add(nostril);
+  }
   const faceWhiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
   const faceDarkMat = new THREE.MeshBasicMaterial({ color: 0x1c1712 });
   for (const side of [-1, 1]) {
@@ -599,9 +667,17 @@ function makeHorse({ coat = 0x8a5a33, mane = 0x3a2a1c } = {}) {
   forelock.position.set(0, 0.24, 0.08);
   head.add(forelock);
 
-  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.66, 0.14), maneMat);
-  tail.position.set(0, 1.45, -1.22);
+  // 雙節漸細尾(group=動畫契約不變:anim 設 tail.rotation.x)
+  const tail = new THREE.Group();
+  tail.position.set(0, 1.62, -1.14);
   tail.rotation.x = 0.55;
+  const tailUpper = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.4, 0.15), maneMat);
+  tailUpper.position.set(0, -0.16, 0);
+  tail.add(tailUpper);
+  const tailLower = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.34, 0.11), maneMat);
+  tailLower.position.set(0, -0.46, -0.07);
+  tailLower.rotation.x = 0.22;
+  tail.add(tailLower);
   rig.add(tail);
 
   // 四腿(雙節+蹄;前腿白襪):pivot=肩/髖
@@ -614,6 +690,9 @@ function makeHorse({ coat = 0x8a5a33, mane = 0x3a2a1c } = {}) {
       end: "foot",
     });
     leg.pivot.position.set(x, 1.35, z);
+    const kneeCap = new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 8), sock ? sockMat : coatMat); // 膝/飛節
+    kneeCap.position.set(0, -0.62, 0);
+    leg.pivot.add(kneeCap);
     rig.add(leg.pivot);
     return leg;
   };
