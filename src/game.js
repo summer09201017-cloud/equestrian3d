@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { InputManager } from "./input.js";
 import { loadSettings, saveSettings, loadSavedGame, saveGameState } from "./storage.js";
+import { animateIdleHead, animateCrowdCheer, EAR_SAFE_PHI } from "./idle-life.js";
 
 // —— 3D 馬術障礙賽(equestrian3d)——「騎乘引擎」首發(2026-07-15 拍板:馬術先建家,騎驢進耶路撒冷之後換皮)。
 // 照 3d-game-kit:renderer/lights/makePerson 臉部鐵則、相機視角檔+lerp、量值可調、判定=畫面。
@@ -206,55 +207,68 @@ function makePerson({ shirt = 0x2f6f4e, pants = 0x2a3550, skin = 0xf3cca6, hair 
   waist.add(beltLine);
   rig.add(waist);
 
+  // idle 生動(07-21):頭+五官+髮全收進 headGroup(樞紐=頭中心 y2.12),
+  // 轉頭時整顆頭連臉一起轉;H(y)=y−頭中心 → 群組化前後視覺位置逐一相同(零位移)。
+  const HEAD_CENTER_Y = 2.12;
+  const headGroup = new THREE.Group();
+  headGroup.position.y = HEAD_CENTER_Y;
+  rig.add(headGroup);
+  const H = (y) => y - HEAD_CENTER_Y;
+
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.25, 18, 18), skinMat);
-  head.position.y = 2.12;
-  rig.add(head);
+  head.position.y = H(2.12);
+  headGroup.add(head);
   const earL = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 10), skinMat);
   earL.scale.set(0.45, 1, 0.8);
-  earL.position.set(-0.245, 2.11, 0);
-  rig.add(earL);
+  earL.position.set(-0.245, H(2.11), 0);
+  headGroup.add(earL);
   const earR = earL.clone();
   earR.position.x = 0.245;
-  rig.add(earR);
+  headGroup.add(earR);
 
+  // 耳前無髮鐵律(07-20):髮兩件式——①頭頂瓜皮帽(theta 0→0.32π,帽緣高於眉/眼/耳、不往前壓)
+  // ②後腦半球用 EAR_SAFE_PHI(phi 1.06π~1.94π,前緣一律留在耳後)→ 兩鬢與耳前露臉頰+耳朵
   const hairMat = new THREE.MeshStandardMaterial({ color: hair, roughness: 0.85 });
-  const hairCap = new THREE.Mesh(new THREE.SphereGeometry(0.265, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.46), hairMat);
-  hairCap.position.y = 2.13;
-  hairCap.rotation.x = -0.22;
-  rig.add(hairCap);
+  const hairCap = new THREE.Mesh(new THREE.SphereGeometry(0.265, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.32), hairMat);
+  hairCap.position.y = H(2.13);
+  headGroup.add(hairCap);
   const hairBack = new THREE.Mesh(
-    new THREE.SphereGeometry(0.255, 16, 8, Math.PI, Math.PI, Math.PI * 0.35, Math.PI * (gender === "f" ? 0.38 : 0.22)),
+    new THREE.SphereGeometry(
+      0.255, 16, 8,
+      EAR_SAFE_PHI.start, EAR_SAFE_PHI.end - EAR_SAFE_PHI.start,
+      Math.PI * 0.28, Math.PI * (gender === "f" ? 0.5 : 0.32),
+    ),
     hairMat,
   );
-  hairBack.position.y = 2.12;
-  rig.add(hairBack);
+  hairBack.position.y = H(2.12);
+  headGroup.add(hairBack);
 
   const faceDark = new THREE.MeshBasicMaterial({ color: 0x25201a });
   const faceWhite = new THREE.MeshBasicMaterial({ color: 0xffffff });
   const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 10), faceWhite);
-  eyeL.position.set(-0.09, 2.18, 0.21);
-  rig.add(eyeL);
+  eyeL.position.set(-0.09, H(2.18), 0.21);
+  headGroup.add(eyeL);
   const eyeR = eyeL.clone();
   eyeR.position.x = 0.09;
-  rig.add(eyeR);
+  headGroup.add(eyeR);
   const pupilL = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 8), faceDark);
-  pupilL.position.set(-0.09, 2.18, 0.25);
-  rig.add(pupilL);
+  pupilL.position.set(-0.09, H(2.18), 0.25);
+  headGroup.add(pupilL);
   const pupilR = pupilL.clone();
   pupilR.position.x = 0.09;
-  rig.add(pupilR);
+  headGroup.add(pupilR);
   const browL = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.02, 0.02), faceDark);
-  browL.position.set(-0.09, 2.26, 0.22);
+  browL.position.set(-0.09, H(2.26), 0.22);
   browL.rotation.z = 0.16;
-  rig.add(browL);
+  headGroup.add(browL);
   const browR = browL.clone();
   browR.position.x = 0.09;
   browR.rotation.z = -0.16;
-  rig.add(browR);
+  headGroup.add(browR);
   const smile = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.014, 8, 14, Math.PI), faceDark);
-  smile.position.set(0, 2.04, 0.21);
+  smile.position.set(0, H(2.04), 0.21);
   smile.rotation.z = Math.PI;
-  rig.add(smile);
+  headGroup.add(smile);
   // smile 一併回傳:角色皮要換嘴(如金牙)時把原生嘴關掉,避免雙嘴
 
   const shoeMat = new THREE.MeshStandardMaterial({ color: 0x2a2622, roughness: 0.85 });
@@ -293,7 +307,7 @@ function makePerson({ shirt = 0x2f6f4e, pants = 0x2a3550, skin = 0xf3cca6, hair 
   const rightLeg = mkLeg(0.15);
 
   group.scale.setScalar(scale);
-  return { group, rig, head, waist, leftArm, rightArm, leftLeg, rightLeg, smile };
+  return { group, rig, head, headGroup, waist, leftArm, rightArm, leftLeg, rightLeg, smile };
 }
 
 // ---------- 騎手角色造型(掛在 makePerson 的 rig 上,座姿統一 poseRiderOnSaddle) ----------
@@ -423,33 +437,36 @@ function makeRiderCharacter(riderId) {
     gender: "f", // 兩位都是長髮(借長髮版後腦髮)
     scale: 0.95,
   });
-  // 兩側垂髮(兩位都是金色長髮)
+  // 帽/鬍/垂髮等「長在頭上」的配件全掛 headGroup(idle 轉頭時跟著整顆頭轉);HY=原立姿 y→頭局部
+  const hg = rider.headGroup;
+  const HY = (y) => y - 2.12;
+  // 兩側垂髮(兩位都是金色長髮):收在耳後(z<0)——耳前無髮鐵律,兩鬢露臉頰+耳朵
   const hairSideMat = new THREE.MeshStandardMaterial({ color: spec.hair, roughness: 0.85 });
   for (const x of [-0.21, 0.21]) {
     const lock = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.32, 0.14), hairSideMat);
-    lock.position.set(x, 1.97, -0.03);
-    rider.rig.add(lock);
+    lock.position.set(x, HY(1.97), -0.09);
+    hg.add(lock);
   }
   if (riderId === "johnny") {
     // 白色毛帽+帽上幾顆星+正面金馬蹄鐵+胸前藍星(白衣要用深色星才看得見)
     // 帽=罩在頭髮上的圓頂,下緣停在眉上(y2.2)——蓋到眼睛高度眼珠會「長到帽子上」(07-15 踩過)
     const capMat = new THREE.MeshStandardMaterial({ color: 0xf2f0ec, roughness: 0.7 });
     const cap = new THREE.Mesh(new THREE.SphereGeometry(0.268, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), capMat);
-    cap.position.y = 2.2;
-    rider.rig.add(cap);
+    cap.position.y = HY(2.2);
+    hg.add(cap);
     const horseshoe = new THREE.Mesh(new THREE.TorusGeometry(0.055, 0.016, 6, 12, Math.PI), new THREE.MeshBasicMaterial({ color: 0xd8a83c }));
-    horseshoe.position.set(0, 2.24, 0.28);
+    horseshoe.position.set(0, HY(2.24), 0.28);
     horseshoe.rotation.x = -0.15;
-    rider.rig.add(horseshoe);
+    hg.add(horseshoe);
     // 帽上星星:沿帽面繞一圈貼幾顆藍星,面朝外(正前方留給馬蹄鐵);半徑要比帽面突出,埋進去就看不見(07-15 踩過)
     for (const a of [-1.1, -0.55, 0.55, 1.1, Math.PI]) {
       const s = makeStar(0.05, 0x2f4fa8);
       const r = 0.28;
-      s.position.set(Math.sin(a) * r, 2.24, Math.cos(a) * r);
+      s.position.set(Math.sin(a) * r, HY(2.24), Math.cos(a) * r);
       s.rotation.order = "YXZ";
       s.rotation.y = a;
       s.rotation.x = -0.15;
-      rider.rig.add(s);
+      hg.add(s);
     }
     const chestStar = makeStar(0.1, 0x2f4fa8);
     chestStar.position.set(0, 1.54, 0.171);
@@ -458,11 +475,11 @@ function makeRiderCharacter(riderId) {
     // 迪亞哥:青綠騎師帽(圓頂+前簷)+胸前金心+恐龍化隱藏件(獸化時才現形)
     const capMat = new THREE.MeshStandardMaterial({ color: 0x2f8f8a, roughness: 0.6 });
     const cap = new THREE.Mesh(new THREE.SphereGeometry(0.268, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), capMat);
-    cap.position.y = 2.2;
-    rider.rig.add(cap);
+    cap.position.y = HY(2.2);
+    hg.add(cap);
     const brim = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.035, 0.2), capMat);
-    brim.position.set(0, 2.2, 0.3);
-    rider.rig.add(brim);
+    brim.position.set(0, HY(2.2), 0.3);
+    hg.add(brim);
     // 雙向橫條黃條紋(07-16 使用者點名):兩組斜向條紋交叉成 X,前後都看得到
     const stripeMat = new THREE.MeshStandardMaterial({ color: 0xf6d743, roughness: 0.65 });
     for (const tilt of [Math.PI / 4, -Math.PI / 4]) { // ±45°=正菱形;條紋短一點,別爬到臉上(07-16)
@@ -489,31 +506,31 @@ function makeRiderCharacter(riderId) {
     const oRing = new THREE.Mesh(new THREE.TorusGeometry(0.044, 0.016, 8, 14), dioMat);
     oRing.position.set(0.098, 0, 0);
     dio.add(oRing);
-    dio.position.set(0, 2.315, 0.235);
+    dio.position.set(0, HY(2.315), 0.235);
     dio.rotation.x = -0.42; // 貼著帽前坡
-    rider.rig.add(dio);
+    hg.add(dio);
   } else {
     // 棕寬簷帽+深帽帶+下顎環鬍+一口金牙的笑(原生嘴關掉,不然變雙嘴)
     rider.smile.visible = false;
     const hatMat = new THREE.MeshStandardMaterial({ color: 0x6b4526, roughness: 0.75 });
     const bandMat = new THREE.MeshStandardMaterial({ color: 0x3e2a18, roughness: 0.6 });
     const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.37, 0.37, 0.03, 18), hatMat);
-    brim.position.y = 2.26;
-    rider.rig.add(brim);
+    brim.position.y = HY(2.26);
+    hg.add(brim);
     const band = new THREE.Mesh(new THREE.CylinderGeometry(0.218, 0.218, 0.07, 14), bandMat);
-    band.position.y = 2.3;
-    rider.rig.add(band);
+    band.position.y = HY(2.3);
+    hg.add(band);
     const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.215, 0.22, 14), hatMat);
-    crown.position.y = 2.4;
-    rider.rig.add(crown);
+    crown.position.y = HY(2.4);
+    hg.add(crown);
     const beard = new THREE.Mesh(new THREE.TorusGeometry(0.195, 0.028, 6, 14, Math.PI), new THREE.MeshStandardMaterial({ color: 0x3a2a16, roughness: 0.9 }));
-    beard.position.set(0, 1.95, 0); // 貼著下顎線,壓低避免看起來像第二張嘴
+    beard.position.set(0, HY(1.95), 0); // 貼著下顎線,壓低避免看起來像第二張嘴
     beard.rotation.x = Math.PI / 2; // 半環轉到臉前方
-    rider.rig.add(beard);
+    hg.add(beard);
     const grill = new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.022, 8, 14, Math.PI), new THREE.MeshBasicMaterial({ color: 0xd8a83c }));
-    grill.position.set(0, 2.045, 0.218);
+    grill.position.set(0, HY(2.045), 0.218);
     grill.rotation.z = Math.PI;
-    rider.rig.add(grill);
+    hg.add(grill);
     // 分成兩塊的大綠披風:左右各一片,樞紐掛在肩上、布面垂下——updateHorsePose 會依馬速讓它揚起飄動
     const capeMat = new THREE.MeshStandardMaterial({ color: 0x3f8f5a, roughness: 0.8, side: THREE.DoubleSide });
     rider.capes = [];
@@ -733,6 +750,8 @@ export class EquestrianGame {
     this.opponentId = settings.opponent === "random" || RIDERS[settings.opponent] ? settings.opponent : "random";
     this.riderId = RIDERS[settings.riderCharacter] ? settings.riderCharacter : "gyro";
 
+    // idle 生動(07-21):觀眾人偶清單(animateCrowdCheer 每幀驅動,buildCrowd 重灌)
+    this.crowdFigures = [];
     // 技能系統(鋼球):飛行中的球、煙霧粒子、冷卻、雙方落馬計時(>=FALL_DUR=在馬上)
     this.balls = [];
     this.smokePuffs = [];
@@ -1380,6 +1399,7 @@ export class EquestrianGame {
   buildCrowd() {
     // 兩側觀賽台前的有臉觀眾(臉朝場內;07-11 鐵則:觀眾要有臉、男女各半)
     this.crowd = new THREE.Group();
+    this.crowdFigures = []; // 換賽段重建世界時重灌(舊人偶已隨舊 Scene 丟棄)
     const shirts = [0xd98a3d, 0x3d78d9, 0xc94f8f, 0x4fae6a, 0xb0552f, 0x8a5ac0];
     for (const side of [-1, 1]) {
       for (let i = 0; i < 7; i += 1) {
@@ -1393,6 +1413,8 @@ export class EquestrianGame {
         p.group.position.set(-27 + i * 9, 0, side * 38.2);
         p.group.rotation.y = side > 0 ? Math.PI : 0;
         this.crowd.add(p.group);
+        // 舉手人浪:相位=座號×0.9+對側偏移(決定性,不用 Math.random)→ 兩側此起彼落
+        this.crowdFigures.push({ fig: p, phase: i * 0.9 + (side > 0 ? 0.45 : 0), rigY: 0 });
       }
     }
     this.scene.add(this.crowd);
@@ -2146,6 +2168,7 @@ export class EquestrianGame {
 
     this.handleKeys();
     this.updateHorsePose();
+    this.updateIdleLife();
     this.placeHorse();
     this.updateBlizzard(delta);
     this.updateSky();
@@ -2159,6 +2182,32 @@ export class EquestrianGame {
 
     this.input.endFrame();
     this.pushHud();
+  }
+
+  // idle 生動(07-21,idle-life.js):騎手待機/騎行段偶爾平滑轉頭看一下+咧嘴微笑,
+  // 兩位騎手 phase/period 錯開;起跳/落馬/被時停=不轉頭,平滑回正(絕不瞬跳)。
+  // ⚠ 馬不套 idle-life——馬頭朝向歸 placeHorse/updateHorsePose 管,這裡完全不碰。
+  updateIdleLife() {
+    const home = (rider) => { // 非 idle 段:頭與嘴平滑回正
+      if (!rider || !rider.headGroup) return;
+      rider.headGroup.rotation.y *= 0.85;
+      if (rider.smile) {
+        rider.smile.scale.x += (1 - rider.smile.scale.x) * 0.15;
+        rider.smile.scale.y += (1 - rider.smile.scale.y) * 0.15;
+      }
+    };
+    if (this.rider) {
+      const meIdle = this.phase !== "jumping" && !this.jumpAnim && (this.meFall ?? 9) >= FALL_DUR && this.aiTimeStop <= 0;
+      if (meIdle) animateIdleHead(this.rider.headGroup, this.rider.smile, this.time, { phase: 0, period: 5.6 });
+      else home(this.rider);
+    }
+    if (this.aiRider) {
+      const aiIdle = !this.aiJumpAnim && (this.aiFall ?? 9) >= FALL_DUR && this.timeStop <= 0;
+      if (aiIdle) animateIdleHead(this.aiRider.headGroup, this.aiRider.smile, this.time, { phase: 2.7, period: 6.8 });
+      else home(this.aiRider);
+    }
+    // 觀眾舉手人浪+左右看(玩家放 THE WORLD 時停=全場觀眾一起凍結,世界觀一致)
+    if (this.timeStop <= 0) animateCrowdCheer(this.crowdFigures, this.time);
   }
 
   handleKeys() {

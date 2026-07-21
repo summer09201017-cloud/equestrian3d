@@ -1,5 +1,5 @@
 // 網路優先 HTML+快取優先資產(07-13 修復:cache-first 舊 index 會在部署後 404 壞站)
-const CACHE_NAME = "equestrian3d-nf26"; // nf22:修技能彈在地形上鑽土(出生/追蹤/觸地)
+const CACHE_NAME = "equestrian3d-nf27"; // nf27:idle 生動(騎手轉頭微笑+觀眾人浪)+耳前無髮鐵律
 const CORE_ASSETS = ["/", "/index.html", "/manifest.webmanifest", "/icon.svg", "/icon-maskable.svg"];
 
 self.addEventListener("install", (event) => {
