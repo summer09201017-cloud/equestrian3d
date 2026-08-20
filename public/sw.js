@@ -1,5 +1,5 @@
 // 網路優先 HTML+快取優先資產(07-13 修復:cache-first 舊 index 會在部署後 404 壞站)
-const CACHE_NAME = "equestrian3d-nf30"; // nf27:idle 生動(騎手轉頭微笑+觀眾人浪)+耳前無髮鐵律
+const CACHE_NAME = "equestrian3d-nf31"; // nf27:idle 生動(騎手轉頭微笑+觀眾人浪)+耳前無髮鐵律
 const CORE_ASSETS = ["/", "/index.html", "/manifest.webmanifest", "/icon.svg", "/icon-maskable.svg"];
 
 self.addEventListener("install", (event) => {
@@ -62,4 +62,9 @@ self.addEventListener("fetch", (event) => {
       }).catch(() => caches.match("/"));
     }),
   );
+});
+
+// 🏷️ 版號回報(0820 全艦隊批次):頁尾徽章問「實際執行中的版本」,答案=本 SW 的快取名。
+self.addEventListener('message', function (e) {
+  if (e && e.data === 'GET_VERSION' && e.source) e.source.postMessage({ type: 'SW_VERSION', v: CACHE_NAME });
 });
