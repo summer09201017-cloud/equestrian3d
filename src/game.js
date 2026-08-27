@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { InputManager } from "./input.js";
 import { loadSettings, saveSettings, loadSavedGame, saveGameState } from "./storage.js";
-import { animateIdleHead, animateCrowdCheer, EAR_SAFE_PHI } from "./idle-life.js";
+import { animateIdleHead, animateCrowdCheer, EAR_SAFE_PHI, crowdCheer } from "./idle-life.js";
 
 // —— 3D 馬術障礙賽(equestrian3d)——「騎乘引擎」首發(2026-07-15 拍板:馬術先建家,騎驢進耶路撒冷之後換皮)。
 // 照 3d-game-kit:renderer/lights/makePerson 臉部鐵則、相機視角檔+lerp、量值可調、判定=畫面。
@@ -2207,7 +2207,7 @@ export class EquestrianGame {
       else home(this.aiRider);
     }
     // 觀眾舉手人浪+左右看(玩家放 THE WORLD 時停=全場觀眾一起凍結,世界觀一致)
-    if (this.timeStop <= 0) animateCrowdCheer(this.crowdFigures, this.time);
+    if (this.timeStop <= 0) animateCrowdCheer(this.crowdFigures, this.time, { cheer: crowdCheer(this).stepAt(this.time) });
   }
 
   handleKeys() {
