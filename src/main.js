@@ -3,6 +3,7 @@ import { EquestrianGame, GAME_MODES } from "./game.js";
 import { AudioManager } from "./audio.js";
 import { speakLine, setVoiceEnabled } from "./voice.js";
 import { hasSavedGame, loadSettings, saveSettings } from "./storage.js";
+import { crowdCheer } from "./idle-life.js";
 
 const ui = {
   canvas: document.querySelector("#gameCanvas"),
@@ -65,6 +66,13 @@ const game = new EquestrianGame({
   canvas: ui.canvas,
   touchRoot: ui.touchControls,
 });
+/* 🙌 得分歡呼:把 audio.crowdCheer **包一層**,讓每一次喝采聲都同步叫觀眾舉手。
+   ★ 為什麼不逐處補一行:上一輪就是那樣做的,而帶運算式的呼叫點
+   (`event.small ? 1 : 0.6`)配不到樣式被靜靜跳過 ⇒ 本站曾經
+   「終場號角會歡呼、進球當下不會」。包一層之後結構上不可能再漏。
+   既有的逐處 trigger 留著無妨:trigger 取 max 不相加。 */
+const _crowdCheerSfx = audio.crowdCheer.bind(audio);
+audio.crowdCheer = (strength = 1) => { crowdCheer(game).trigger(strength); return _crowdCheerSfx(strength); };
 window.__equestrian3d = game; // dev hook:Playwright 凍結畫面/數值驗證用
 window.__game = game; // /smoke3d 通用鉤子
 
